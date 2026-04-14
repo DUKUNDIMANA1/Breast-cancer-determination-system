@@ -1,0 +1,51 @@
+{% extends "base.html" %}{% block title %}Lab Requests{% endblock %}{% block content %}
+<div class="page-header-row">
+  <div><h1 class="page-header">Lab Requests</h1><p class="text-muted fs-13 mt-8">All diagnostic test requests</p></div>
+  {% if session.role in ('doctor','admin') %}<a href="{{ url_for('new_request') }}" class="btn btn-primary btn-sm">+ New Request</a>{% endif %}
+</div>
+<div class="search-bar mb-16">
+  <form method="GET" class="d-flex gap-sm flex-1 flex-wrap">
+    <input class="form-control flex-1 min-w-180" type="text" name="q" value="{{ q }}" placeholder="Search patient name or ID…"/>
+    <select class="form-control w-180" name="status" onchange="this.form.submit()">
+      <option value="">All Statuses</option>
+      <option value="pending" {{ 'selected' if status_filter=='pending' }}><i class="fa-solid fa-clock"></i> Pending</option>
+      <option value="results_ready" {{ 'selected' if status_filter=='results_ready' }}><i class="fa-solid fa-check-circle"></i> Results Ready</option>
+      <option value="completed" {{ 'selected' if status_filter=='completed' }}><i class="fa-solid fa-check-double"></i> Completed</option>
+    </select>
+    <button type="submit" class="btn btn-primary btn-sm">Search</button>
+    {% if q or status_filter %}<a href="{{ url_for('lab_requests_list') }}" class="btn btn-secondary btn-sm"><i class="fa-solid fa-xmark"></i> Clear</a>{% endif %}
+  </form>
+</div>
+<div class="card">
+  <div class="table-wrap">
+    {% if requests %}
+    <table>
+      <thead><tr><th>Patient ID</th><th>Patient</th><th>Test Type</th><th>Priority</th><th>Status</th><th>Doctor</th><th>Date</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for r in requests %}
+      <tr>
+        <td><span class="id-pill">{{ r.patient_id }}</span></td>
+        <td class="fw-700">{{ r.patient_name }}</td>
+        <td class="fs-13">{{ r.request_type }}</td>
+        <td><span class="badge {{ 'badge-urgent' if r.priority=='urgent' else 'badge-normal' }}">{{ r.priority }}</span></td>
+        <td>{% if r.status=='pending' %}<span class="badge badge-pending">Pending</span>
+          {% elif r.status=='results_ready' %}<span class="badge badge-ready">Results Ready</span>
+          {% elif r.status=='completed' %}<span class="badge badge-done">Completed</span>
+          {% else %}<span class="badge badge-normal">{{ r.status }}</span>{% endif %}</td>
+        <td class="text-muted fs-13">{{ r.doctor_name or '—' }}</td>
+        <td class="text-dim fs-13">{{ r.created_at[:16] }}</td>
+        <td>
+          {% if r.status=='pending' and session.role in ('lab','admin') %}
+          <a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm"><i class="fa-solid fa-flask"></i> Upload</a>
+          {% elif r.status=='results_ready' and session.role in ('doctor','admin') %}
+          <a href="{{ url_for('review_results',request_id=r.id) }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-microscope"></i> Review</a>
+          {% elif r.status=='completed' %}
+          <span class="badge badge-done">Done</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="empty"><div class="ei"><i class="fa-solid fa-clipboard-list"></i></div><p>No requests found.</p></div>{% endif %}
+  </div>
+</div>{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{% if editing %}Edit Patient{% else %}Register Patient{% endif %} — BreastCare AI{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">{% if editing %}Edit Patient{% else %}Register New Patient{% endif %}</h1>
+  <p class="page-subtitle">{% if editing %}Update patient information{% else %}Create a digital profile and generate a unique Patient ID{% endif %}</p>
+</div>
+<div class="d-flex justify-between align-center mb-lg">
+  <a href="{{ url_for('patients') }}" class="btn btn-outline btn-sm">← Back</a>
+</div>
+<div class="g2">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">👤 Patient Information</h3>
+    </div>
+    <form method="POST">
+      <div class="form-group"><label class="form-label">Full Name <span class="text-danger">*</span></label>
+        <input class="form-control" type="text" name="full_name" value="{{ patient.full_name if patient else '' }}" required/></div>
+      <div class="g2">
+        <div class="form-group"><label class="form-label">Date of Birth <span class="text-dim">(optional)</span></label>
+          <input class="form-control" type="date" name="date_of_birth" value="{{ patient.date_of_birth if patient else '' }}"/></div>
+        <div class="form-group"><label class="form-label">Gender <span class="text-dim">(optional)</span></label>
+          <select class="form-control" name="gender">
+            <option value="">— Select —</option>
+            {% for g in ['Female','Male','Other'] %}
+            <option value="{{ g }}" {{ 'selected' if patient and patient.gender==g else '' }}>{{ g }}</option>
+            {% endfor %}
+          </select></div>
+      </div>
+      <div class="form-group"><label class="form-label">Contact / Phone <span class="text-dim">(optional)</span></label>
+        <input class="form-control" type="text" name="contact" value="{{ patient.contact if patient else '' }}" placeholder="Phone number"/></div>
+      <div class="form-group"><label class="form-label">Email <span class="text-dim">(optional)</span></label>
+        <input class="form-control" type="email" name="email" value="{{ patient.email if patient else '' }}" placeholder="patient@email.com"/></div>
+      <div class="form-group"><label class="form-label">Address <span class="text-dim">(optional)</span></label>
+        <textarea class="form-control" name="address" rows="2" placeholder="Physical address…">{{ patient.address if patient else '' }}</textarea></div>
+      <button type="submit" class="btn btn-primary btn-block">
+        {% if editing %}💾 Save Changes{% else %}✅ Register Patient{% endif %}
+      </button>
+    </form>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">ℹ️ About Patient Registration</h3>
+    </div>
+    {% if editing %}
+    <div class="alert alert-info mb-md">Editing patient: <b>{{ patient.patient_id }}</b></div>
+    {% endif %}
+    <div class="process-steps">
+      <div class="step-item">
+        <div class="step-number">🆔</div>
+        <div class="step-content"><b>Auto-generated Patient ID</b><br>
+        A unique ID (format: BC-YYYYMM-XXXXXX) is automatically assigned and links all future lab samples, test requests, and diagnosis records to this patient.</div>
+      </div>
+      <div class="step-item">
+        <div class="step-number">🔗</div>
+        <div class="step-content"><b>Chain of Custody</b><br>
+        After registration, doctors can submit lab test requests for this patient. The system then notifies the lab team automatically.</div>
+      </div>
+      <div class="step-item">
+        <div class="step-number">🔒</div>
+        <div class="step-content"><b>Data Privacy</b><br>
+        Patient records are only accessible to authorized medical staff based on their role.</div>
+      </div>
+    </div>
+    {% if not editing %}
+    <div class="clinical-notes">
+      <div class="text-dim fs-sm">After registering, you can:</div>
+      <ul style="margin-top:8px;padding-left:16px;font-size:var(--font-size-sm);color:var(--text-secondary);line-height:2;">
+        <li>View the patient's full profile</li>
+        <li>Doctors can request lab tests for them</li>
+        <li>Lab team uploads sample results</li>
+        <li>Doctor makes final diagnosis</li>
+      </ul>
+    </div>{% endif %}
+  </div>
+</div>{% endblock %}

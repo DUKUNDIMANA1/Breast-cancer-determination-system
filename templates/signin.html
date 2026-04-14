@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}Sign In — BreastCare AI{% endblock %}
+
+{% block auth_content %}
+<style>
+.auth-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 20% 50%, rgba(5, 30, 58, 0.8) 0%, var(--bg-primary) 65%);
+  padding: var(--spacing-xl);
+}
+
+.auth-wrap::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23003366' fill-opacity='0.12'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2v-4h4v-2h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.auth-box {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-3xl) var(--spacing-2xl);
+  box-shadow: var(--shadow-lg);
+}
+
+.auth-brand {
+  text-align: center;
+  margin-bottom: var(--spacing-2xl);
+}
+
+.brand-icon {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto var(--spacing-md);
+  background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary));
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  box-shadow: var(--shadow-md);
+}
+
+.auth-brand h1 {
+  font-family: 'DM Serif Display', serif;
+  font-size: var(--font-size-2xl);
+  color: var(--accent-primary);
+}
+
+.auth-brand p {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-top: var(--spacing-sm);
+}
+
+.auth-footer {
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  margin-top: var(--spacing-lg);
+}
+
+.auth-footer a {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+/* Default accounts table */
+.accounts-box {
+  margin-top: var(--spacing-lg);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.accounts-box .box-header {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+
+.account-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-light);
+  font-size: var(--font-size-sm);
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.account-row:last-child {
+  border-bottom: none;
+}
+
+.account-row:hover {
+  background: rgba(0, 132, 255, 0.07);
+}
+
+.account-row .role-tag {
+  padding: 2px var(--spacing-sm);
+  border-radius: 20px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-align: center;
+  width: fit-content;
+}
+
+.rt-admin {
+  background: rgba(255, 179, 71, 0.15);
+  color: var(--warning);
+  border: 1px solid rgba(255, 179, 71, 0.3);
+}
+
+.rt-doctor {
+  background: rgba(0, 194, 255, 0.12);
+  color: var(--accent-primary);
+  border: 1px solid rgba(0, 194, 255, 0.25);
+}
+
+.rt-receptionist {
+  background: rgba(0, 229, 176, 0.12);
+  color: var(--success);
+  border: 1px solid rgba(0, 229, 176, 0.25);
+}
+
+.rt-lab {
+  background: rgba(160, 100, 255, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(160, 100, 255, 0.3);
+}
+
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-primary);
+}
+
+.click-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  text-align: center;
+  padding: var(--spacing-sm);
+  border-top: 1px solid var(--border-light);
+}
+</style>
+
+<div class="auth-wrap">
+  <div class="auth-box fade-in">
+    <div class="auth-brand">
+      <div class="brand-icon"><i class="fa-solid fa-heart-pulse"></i></div>
+      <h1>BreastCare AI</h1>
+      <p>Intelligent Breast Cancer Prediction System</p>
+    </div>
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in msgs %}
+        <div class="alert alert-{{ cat }}">
+          <span>{% if cat=='success' %}<i class="fa-solid fa-check"></i>{% elif cat=='danger' %}<i class="fa-solid fa-xmark"></i>{% else %}<i class="fa-solid fa-circle-info"></i>{% endif %}</span>
+          {{ msg }}
+        </div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('signin') }}" id="signin-form">
+      <div class="form-group">
+        <label for="inp-username">Username</label>
+        <input class="form-control" type="text" name="username" id="inp-username"
+          placeholder="Enter your username" required autofocus/>
+      </div>
+      <div class="form-group">
+        <label for="inp-password">Password</label>
+        <input class="form-control" type="password" name="password" id="inp-password"
+          placeholder="Enter your password" required/>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">
+        <i class="fa-solid fa-right-to-bracket"></i>
+        Sign In
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      Need access? Contact your administrator.
+    </div>
+
+    
+
+    
+
+{% block scripts %}
+<script>
+function fillLogin(username, password) {
+  document.getElementById('inp-username').value = username;
+  document.getElementById('inp-password').value = password;
+  // Highlight the form to show it was filled
+  document.getElementById('inp-username').style.borderColor = 'var(--accent2)';
+  document.getElementById('inp-password').style.borderColor = 'var(--accent2)';
+  setTimeout(() => {
+    document.getElementById('inp-username').style.borderColor = '';
+    document.getElementById('inp-password').style.borderColor = '';
+  }, 1200);
+}
+</script>
+{% endblock %}
+
+{% endblock auth_content %}

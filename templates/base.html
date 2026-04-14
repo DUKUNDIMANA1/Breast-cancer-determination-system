@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>{% block title %}BreastCare AI{% endblock %}</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<!-- Font Awesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+<!-- Consistent Design System -->
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="layout">
+{% if session.user_id %}
+<nav class="topbar">
+  <div class="topbar-logo"><i class="fa-solid fa-heart-pulse"></i>BreastCare <span style="color:var(--accent3)">AI</span><div class="logo-dot"></div></div>
+  <div class="topbar-sp"></div>
+  <div class="topbar-right">
+    {% set uc = unread_count() %}
+    <a href="{{ url_for('notifications') }}" class="notif-btn" title="Notifications">
+      <i class="fa-solid fa-bell"></i>{% if uc > 0 %}<span class="notif-badge">{{ uc }}</span>{% endif %}
+    </a>
+    <span class="role-pill rp-{{ session.role }}">{{ session.role }}</span>
+    <div class="user-chip">
+      <div class="av">{{ session.full_name[0].upper() }}</div>
+      <div>
+        <div class="uname">{{ session.full_name }}</div>
+        <div class="urole">{{ session.role }}</div>
+      </div>
+    </div>
+    <a href="{{ url_for('signout') }}" class="btn btn-secondary btn-sm"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</a>
+  </div>
+</nav>
+<div class="main-wrap">
+  <aside class="sidebar">
+    <div class="nav-sec">Main</div>
+    <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint=='dashboard' %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-chart-line"></i></span><span class="nav-text">Dashboard</span></a>
+    <a href="{{ url_for('patients') }}" class="nav-item {% if 'patient' in (request.endpoint or '') %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-users"></i></span><span class="nav-text">Patients</span></a>
+
+    {% if session.role in ('receptionist','admin') %}
+    <a href="{{ url_for('register_patient') }}" class="nav-item {% if request.endpoint=='register_patient' %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-user-plus"></i></span><span class="nav-text">Register Patient</span></a>
+    {% endif %}
+
+    {% if session.role in ('doctor','admin') %}
+    <div class="nav-sec">Doctor</div>
+    <a href="{{ url_for('new_request') }}" class="nav-item {% if request.endpoint=='new_request' %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-file-medical"></i></span><span class="nav-text">New Lab Request</span></a>
+    <a href="{{ url_for('lab_requests_list') }}" class="nav-item {% if request.endpoint=='lab_requests_list' %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-clipboard-list"></i></span><span class="nav-text">Lab Requests</span></a>
+    <a href="{{ url_for('my_predictions') }}" class="nav-item {% if request.endpoint=='my_predictions' %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-microscope"></i></span><span class="nav-text">My Predictions</span></a>
+    {% endif %}
+
+    {% if session.role in ('lab','admin') %}
+    <div class="nav-sec">Lab</div>
+    <a href="{{ url_for('lab_dashboard') }}" class="nav-item {% if request.endpoint=='lab_dashboard' %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-flask"></i></span><span class="nav-text">Lab Queue</span></a>
+    {% endif %}
+
+    {% if session.role == 'admin' %}
+    <div class="nav-sec">Admin</div>
+    <a href="{{ url_for('all_predictions') }}" class="nav-item {% if request.endpoint=='all_predictions' %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-chart-pie"></i></span><span class="nav-text">All Predictions</span></a>
+    <a href="{{ url_for('admin_users') }}" class="nav-item {% if request.endpoint=='admin_users' %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-user-gear"></i></span><span class="nav-text">Manage Users</span></a>
+    <a href="{{ url_for('admin_monitoring') }}" class="nav-item {% if request.endpoint=='admin_monitoring' %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-chart-line"></i></span><span class="nav-text">System Monitoring</span></a>
+    <a href="{{ url_for('export_pdf_all') }}" class="nav-item" target="_blank">
+      <span class="ni"><i class="fa-solid fa-file-export"></i></span><span class="nav-text">Export All PDF</span></a>
+    {% endif %}
+
+    <div class="sidebar-footer">
+      <span class="nav-text">
+        Model: <b style="color:var(--success)">LR</b><br>
+        Accuracy: <span style="color:var(--success);font-family:'JetBrains Mono',monospace;font-weight:700">97.37%</span>
+      </span>
+    </div>
+  </aside>
+  <main class="page-area fade-in">
+    {% with msgs=get_flashed_messages(with_categories=true) %}
+      {% for cat,msg in msgs %}
+        <div class="alert alert-{{ cat }}">
+          <span>{% if cat=='success' %}<i class="fa-solid fa-check"></i>{% elif cat=='danger' %}<i class="fa-solid fa-xmark"></i>{% elif cat=='warning' %}<i class="fa-solid fa-triangle-exclamation"></i>{% else %}<i class="fa-solid fa-circle-info"></i>{% endif %}</span>{{ msg }}
+        </div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% else %}
+<main style="flex:1;min-height:100vh;">{% block auth_content %}{% endblock %}</main>
+{% endif %}
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

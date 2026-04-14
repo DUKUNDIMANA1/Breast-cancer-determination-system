@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}User Management — BreastCare AI{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">User Management</h1>
+  <p class="page-subtitle">Manage system users and their roles</p>
+</div>
+
+<div class="d-flex gap-md mb-lg">
+  <a href="{{ url_for('create_user') }}" class="btn btn-primary">
+    <i class="fa-solid fa-user-plus"></i>
+    Create New User
+  </a>
+  <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">
+    <i class="fa-solid fa-users"></i>
+    View All Users
+  </a>
+</div>
+
+<!-- User Creation Form -->
+{% if request.endpoint == 'create_user' %}
+<div class="card fade-in">
+  <div class="card-header">
+    <h3 class="card-title">
+      <i class="fa-solid fa-user-plus"></i>
+      Create New User
+    </h3>
+  </div>
+  
+  <form method="POST" action="{{ url_for('create_user') }}">
+    <div class="g3 gap-md">
+      <div class="form-group">
+        <label for="full_name">Full Name</label>
+        <input class="form-control" type="text" name="full_name" id="full_name" 
+               placeholder="Enter full name" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input class="form-control" type="text" name="username" id="username" 
+               placeholder="Choose username" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input class="form-control" type="email" name="email" id="email" 
+               placeholder="Enter email address" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="contact">Contact</label>
+        <input class="form-control" type="text" name="contact" id="contact" 
+               placeholder="Phone number">
+      </div>
+      
+      <div class="form-group">
+        <label for="role">Role</label>
+        <select class="form-control" name="role" id="role" required>
+          <option value="">Select Role</option>
+          <option value="admin">Administrator</option>
+          <option value="doctor">Doctor</option>
+          <option value="receptionist">Receptionist</option>
+          <option value="lab">Lab Technician</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input class="form-control" type="password" name="password" id="password" 
+               placeholder="Set password" required>
+      </div>
+    </div>
+    
+    <div class="d-flex gap-md">
+      <button type="submit" class="btn btn-primary">
+        <i class="fa-solid fa-save"></i>
+        Create User
+      </button>
+      <a href="{{ url_for('admin_users') }}" class="btn btn-outline">
+        Cancel
+      </a>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<!-- User Edit Form -->
+{% if request.endpoint == 'edit_user' %}
+<div class="card fade-in">
+  <div class="card-header">
+    <h3 class="card-title">
+      <i class="fa-solid fa-user-edit"></i>
+      Edit User: {{ edit_user.full_name }}
+    </h3>
+  </div>
+  
+  <form method="POST" action="{{ url_for('edit_user', uid=edit_user.id) }}">
+    <div class="g3 gap-md">
+      <div class="form-group">
+        <label for="full_name">Full Name</label>
+        <input class="form-control" type="text" name="full_name" id="full_name" 
+               value="{{ edit_user.full_name }}" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input class="form-control" type="text" name="username" id="username" 
+               value="{{ edit_user.username }}" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input class="form-control" type="email" name="email" id="email" 
+               value="{{ edit_user.email }}" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="contact">Contact</label>
+        <input class="form-control" type="text" name="contact" id="contact" 
+               value="{{ edit_user.contact }}">
+      </div>
+      
+      <div class="form-group">
+        <label for="role">Role</label>
+        <select class="form-control" name="role" id="role" required>
+          <option value="admin" {% if edit_user.role == 'admin' %}selected{% endif %}>Administrator</option>
+          <option value="doctor" {% if edit_user.role == 'doctor' %}selected{% endif %}>Doctor</option>
+          <option value="receptionist" {% if edit_user.role == 'receptionist' %}selected{% endif %}>Receptionist</option>
+          <option value="lab" {% if edit_user.role == 'lab' %}selected{% endif %}>Lab Technician</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="password">New Password (leave blank to keep current)</label>
+        <input class="form-control" type="password" name="password" id="password" 
+               placeholder="Enter new password or leave blank">
+      </div>
+    </div>
+    
+    <div class="d-flex gap-md">
+      <button type="submit" class="btn btn-primary">
+        <i class="fa-solid fa-save"></i>
+        Update User
+      </button>
+      <a href="{{ url_for('admin_users') }}" class="btn btn-outline">
+        Cancel
+      </a>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<!-- Users List -->
+{% if request.endpoint == 'admin_users' %}
+<div class="card">
+  <div class="card-header">
+    <div class="d-flex justify-between align-center">
+      <h3 class="card-title">
+        <i class="fa-solid fa-users"></i>
+        System Users
+      </h3>
+      <div class="text-muted">
+        {{ users|length }} total users
+      </div>
+    </div>
+  </div>
+  
+  <!-- Search Bar -->
+  <div class="search-bar">
+    <input class="form-control" type="text" id="search-input" 
+           placeholder="Search users by name, username, or email...">
+    <button class="btn btn-secondary" onclick="clearSearch()">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+  
+  <!-- Users Table -->
+  <div class="table-container">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Full Name</th>
+          <th>Username</th>
+          <th>Email</th>
+          <th>Contact</th>
+          <th>Role</th>
+          <th>Joined</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td class="text-muted">{{ loop.index }}</td>
+          <td class="fw-700">{{ u.full_name }}</td>
+          <td class="mono">{{ u.username }}</td>
+          <td class="text-muted">{{ u.email }}</td>
+          <td class="text-muted">{{ u.contact or '—' }}</td>
+          <td>
+            <span class="badge {% if u.role == 'admin' %}badge-warning{% elif u.role == 'doctor' %}badge-info{% elif u.role == 'receptionist' %}badge-success{% else %}badge-primary{% endif %}">
+              {{ u.role|title }}
+            </span>
+          </td>
+          <td class="text-muted">{{ u.created_at[:10] }}</td>
+          <td>
+            <div class="btn-group">
+              <a href="{{ url_for('edit_user', uid=u.id) }}" 
+                 class="btn btn-outline btn-sm" title="Edit User">
+                <i class="fa-solid fa-edit"></i>
+              </a>
+              <form method="POST" action="{{ url_for('delete_user', uid=u.id) }}" 
+                    onsubmit="return confirm('Remove {{ u.full_name }}? This action cannot be undone.')"
+                    style="display: inline;">
+                <button type="submit" class="btn btn-danger btn-sm" title="Delete User">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  
+  {% if not users %}
+  <div class="empty">
+    <div class="ei">
+      <i class="fa-solid fa-users-slash"></i>
+    </div>
+    <p>No users found in the system.</p>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<script>
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-input').focus();
+}
+
+// Search functionality
+document.getElementById('search-input')?.addEventListener('input', function(e) {
+  const searchTerm = e.target.value.toLowerCase();
+  const rows = document.querySelectorAll('tbody tr');
+  
+  rows.forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = text.includes(searchTerm) ? '' : 'none';
+  });
+});
+</script>
+{% endblock %}

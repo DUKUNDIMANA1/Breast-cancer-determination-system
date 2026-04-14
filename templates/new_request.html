@@ -1,0 +1,73 @@
+{% extends "base.html" %}{% block title %}New Lab Request{% endblock %}{% block content %}
+<div class="page-header-row">
+  <div><h1 class="page-header">New Lab Request</h1>
+    <p class="text-muted fs-13 mt-8">Submit a diagnostic test request — the lab team will be notified immediately</p></div>
+  <a href="{{ url_for('lab_requests_list') }}" class="btn btn-outline btn-sm">← Back</a>
+</div>
+<div class="g2">
+  <div class="card">
+    <div class="sec-label"><i class="fa-solid fa-file-medical"></i> Request Details</div>
+    <form method="POST">
+      <div class="form-group"><label>Patient <span class="text-danger">*</span></label>
+        <select class="form-control" name="patient_id" required>
+          <option value="">— Select Patient —</option>
+          {% for p in patients %}
+          <option value="{{ p.patient_id }}" {{ 'selected' if patient_id==p.patient_id else '' }}>
+            {{ p.full_name }} ({{ p.patient_id }})
+          </option>
+          {% endfor %}
+        </select></div>
+      <div class="form-group"><label>Test / Request Type <span class="text-danger">*</span></label>
+        <select class="form-control" name="request_type" required>
+          <option value="">— Select Test —</option>
+          {% for t in ['Biopsy — Fine Needle Aspirate (FNA)','Biopsy — Core Needle','Mammogram','Ultrasound','Histopathology','MRI Scan','CT Scan','Blood Markers','Other'] %}
+          <option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select></div>
+      <div class="form-group"><label>Priority</label>
+        <select class="form-control" name="priority">
+          <option value="normal">Normal</option>
+          <option value="urgent"><i class="fa-solid fa-triangle-exclamation"></i> Urgent</option>
+        </select></div>
+      <div class="form-group"><label>Clinical Notes <span class="opt">(optional)</span></label>
+        <textarea class="form-control" name="clinical_notes" rows="4" placeholder="Describe symptoms, history, reason for test…"></textarea></div>
+      <button type="submit" class="btn btn-primary btn-full"><i class="fa-solid fa-paper-plane"></i> Submit Request — Notify Lab</button>
+    </form>
+  </div>
+  <div class="card">
+    <div class="sec-label"><i class="fa-solid fa-link"></i> What Happens Next</div>
+    <div class="process-steps">
+      <div class="step-item">
+        <span class="step-number"><i class="fa-solid fa-1"></i></span>
+        <div class="step-content">
+          <b class="text-primary">Lab Notified</b><br>
+          The lab team receives an instant notification with your request details and priority level.
+        </div>
+      </div>
+      <div class="step-item">
+        <span class="step-number"><i class="fa-solid fa-2"></i></span>
+        <div class="step-content">
+          <b class="text-primary">Sample Processing</b><br>
+          The lab technician processes the physical sample and matches it to the digital request using the Patient ID.
+        </div>
+      </div>
+      <div class="step-item">
+        <span class="step-number"><i class="fa-solid fa-3"></i></span>
+        <div class="step-content">
+          <b class="text-primary">Results Uploaded</b><br>
+          The lab uploads the digital results — including cell feature values and tissue images — into the patient's record.
+        </div>
+      </div>
+      <div class="step-item">
+        <span class="step-number"><i class="fa-solid fa-4"></i></span>
+        <div class="step-content">
+          <b class="text-primary">You're Notified</b><br>
+          You receive a notification when results are ready. Open the Review page to run the AI diagnosis and make a final determination.
+        </div>
+      </div>
+    </div>
+    {% if patients|length == 0 %}
+    <div class="alert alert-warning mt-16">No patients registered yet. <a href="{{ url_for('patients') }}">Ask reception to register a patient first.</a></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block title %}Lab Queue{% endblock %}{% block content %}
+<div class="page-header"><h1>Lab Queue</h1><p>Process incoming diagnostic requests and upload results</p></div>
+<div class="card mb-16">
+  <div class="card-title mb-12"><i class="fa-solid fa-clock"></i> Pending Requests — Awaiting Lab Results</div>
+  {% if pending %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Patient ID</th><th>Patient</th><th>Test Type</th><th>Doctor</th><th>Priority</th><th>Requested</th><th>Action</th></tr></thead>
+    <tbody>
+    {% for r in pending %}
+    <tr class="{{ 'urgent-row' if r.priority=='urgent' else '' }}">
+      <td><span class="id-pill">{{ r.patient_id }}</span></td>
+      <td class="fw-700">{{ r.patient_name }}</td>
+      <td>{{ r.request_type }}</td>
+      <td class="text-muted fs-13">{{ r.doctor_name or '—' }}</td>
+      <td><span class="badge {{ 'badge-urgent' if r.priority=='urgent' else 'badge-normal' }}">{{ r.priority }}</span></td>
+      <td class="text-dim fs-13">{{ r.created_at[:16] }}</td>
+      <td><a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-flask"></i> Upload Results →</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty"><div class="ei"><i class="fa-solid fa-check-circle"></i></div><p>No pending requests. Queue is clear.</p></div>{% endif %}
+</div>
+<div class="card">
+  <div class="card-title mb-12"><i class="fa-solid fa-check-circle"></i> Recently Completed</div>
+  {% if completed %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Patient ID</th><th>Patient</th><th>Test Type</th><th>Status</th><th>Submitted</th></tr></thead>
+    <tbody>
+    {% for r in completed %}
+    <tr>
+      <td><span class="id-pill">{{ r.patient_id }}</span></td>
+      <td class="fw-700">{{ r.patient_name }}</td>
+      <td class="fs-13">{{ r.request_type }}</td>
+      <td><span class="badge {{ 'badge-ready' if r.status=='results_ready' else 'badge-done' }}">{{ r.status.replace('_',' ').title() }}</span></td>
+      <td class="text-dim fs-13">{{ r.submitted_at[:16] }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty empty-lg"><div class="ei ei-lg"><i class="fa-solid fa-clipboard-list"></i></div><p class="fs-13">No completed results yet.</p></div>{% endif %}
+</div>{% endblock %}

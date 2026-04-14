@@ -1,0 +1,69 @@
+{% extends "base.html" %}{% block title %}Prediction Detail{% endblock %}{% block content %}
+<div class="page-header-row">
+  <div><h1 class="page-header">Prediction Detail</h1>
+    <p class="text-muted fs-13 mt-8"><span class="id-pill">{{ pred.patient_id }}</span> · {{ pred.full_name }}</p></div>
+  <div class="btn-group">
+    {% if session.role=='admin' %}<a href="{{ url_for('export_pdf_single',patient_id=pred.patient_id) }}" class="btn btn-warn btn-sm">📄 PDF</a>{% endif %}
+    <a href="{{ url_for('patient_detail',patient_id=pred.patient_id) }}" class="btn btn-outline btn-sm">← Patient</a>
+  </div>
+</div>
+<div class="g2 mb-16">
+  <div>
+    <div class="result-banner {{ 'mal' if pred.result==1 else 'ben' }} mb-16">
+      <div class="fs-12 fw-700 text-dim text-uppercase letter-spacing-sm mb-4">AI Diagnosis Result</div>
+      <div class="result-label {{ 'mal' if pred.result==1 else 'ben' }}">{{ 'MALIGNANT' if pred.result==1 else 'BENIGN' }}</div>
+      <div class="conf-bar mt-8"><div class="conf-fill {{ 'mal' if pred.result==1 else 'ben' }} conf-fill-{{ pred.confidence }}"></div></div>
+      <div class="font-mono confidence-{{ 'mal' if pred.result==1 else 'ben' }}">{{ "%.2f"|format(pred.confidence) }}% confidence</div>
+      <div class="fs-12 text-dim mt-8">{{ 'Immediate clinical follow-up recommended.' if pred.result==1 else 'Continue routine monitoring.' }}</div>
+    </div>
+    <div class="card">
+      <div class="sec-label">👤 Patient Information</div>
+      <div class="info-grid">
+        <div><div class="il">Patient ID</div><div class="iv"><code>{{ pred.patient_id }}</code></div></div>
+        <div><div class="il">Name</div><div class="iv">{{ pred.full_name }}</div></div>
+        <div><div class="il">Gender</div><div class="iv">{{ pred.gender or '—' }}</div></div>
+        <div><div class="il">DOB</div><div class="iv">{{ pred.date_of_birth or '—' }}</div></div>
+        <div><div class="il">Contact</div><div class="iv">{{ pred.contact or '—' }}</div></div>
+        <div><div class="il">Email</div><div class="iv">{{ pred.email or '—' }}</div></div>
+        <div><div class="il">Determined By</div><div class="iv">{{ pred.doctor_name or '—' }}</div></div>
+        <div><div class="il">Date</div><div class="iv">{{ pred.created_at[:16] }}</div></div>
+      </div>
+      {% if pred.doctor_notes %}
+      <div class="divider"></div>
+      <div class="il">Doctor's Notes</div>
+      <div style="background:var(--bg3);padding:10px;border-radius:8px;font-size:13px;color:var(--text2);margin-top:6px;">{{ pred.doctor_notes }}</div>{% endif %}
+    </div>
+    {% if lab_result and lab_result.image_annotated %}
+    <div class="card mt-16">
+      <div class="sec-label">🔬 Tissue Image</div>
+      <div class="img-compare">
+        {% if lab_result.image_path %}<div class="img-box"><div class="img-label">Original</div><img src="/{{ lab_result.image_path }}"/></div>{% endif %}
+        <div class="img-box"><div class="img-label">Annotated</div><img src="data:image/jpeg;base64,{{ lab_result.image_annotated }}"/></div>
+      </div>
+    </div>{% endif %}
+  </div>
+  <div class="card">
+    <div class="sec-label">📊 Feature Values (20)</div>
+    <div class="fs-12 text-dim mb-8">Mean</div>
+    <div class="feat-list mb-12">
+      {% for f in ['radius_mean','texture_mean','smoothness_mean','compactness_mean','concavity_mean','symmetry_mean','fractal_dimension_mean'] %}
+      <div class="feat-row"><span class="fn">{{ f }}</span><span class="fv">{{ "%.6f"|format(pred.features[f]) }}</span></div>{% endfor %}
+    </div>
+    <div class="fs-12 text-dim mb-8">Standard Error</div>
+    <div class="feat-list mb-12">
+      {% for f in ['radius_se','texture_se','smoothness_se','compactness_se','concavity_se','concave points_se','symmetry_se','fractal_dimension_se'] %}
+      <div class="feat-row"><span class="fn">{{ f }}</span><span class="fv">{{ "%.6f"|format(pred.features[f]) }}</span></div>{% endfor %}
+    </div>
+    <div class="fs-12 text-dim mb-8">Worst</div>
+    <div class="feat-list">
+      {% for f in ['smoothness_worst','compactness_worst','concavity_worst','symmetry_worst','fractal_dimension_worst'] %}
+      <div class="feat-row"><span class="fn">{{ f }}</span><span class="fv">{{ "%.6f"|format(pred.features[f]) }}</span></div>{% endfor %}
+    </div>
+    {% if session.role in ('admin','doctor') %}
+    <div class="divider"></div>
+    <form method="POST" action="{{ url_for('delete_prediction',pred_id=pred.id) }}"
+      onsubmit="return confirm('Delete this prediction permanently?')">
+      <button type="submit" class="btn btn-danger btn-sm">🗑 Delete Prediction</button>
+    </form>{% endif %}
+  </div>
+</div>{% endblock %}

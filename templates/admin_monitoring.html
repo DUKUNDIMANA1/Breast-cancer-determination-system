@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}System Monitoring — BreastCare AI{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">System Monitoring</h1>
+  <p class="page-subtitle">Real-time monitoring and drift detection for breast cancer prediction system</p>
+</div>
+
+<!-- Performance Metrics -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">
+      <i class="fa-solid fa-chart-line"></i>
+      Performance Metrics
+    </h3>
+  </div>
+  
+  <div class="g3 gap-md">
+    <div class="stat-card">
+      <div class="stat-label">Total Predictions</div>
+      <div class="stat-value text-primary">{{ performance_metrics.total_predictions }}</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-label">Validation Pass Rate</div>
+      <div class="stat-value text-success">{{ "%.1f"|format(performance_metrics.get('validation_pass_rate', 0) * 100) }}%</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-label">Avg Validation Confidence</div>
+      <div class="stat-value text-accent">{{ "%.2f"|format(performance_metrics.get('average_validation_confidence', 0)) }}</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-label">Rejection Rate</div>
+      <div class="stat-value text-danger">{{ "%.1f"|format(performance_metrics.get('rejection_rate', 0) * 100) }}%</div>
+    </div>
+  </div>
+</div>
+
+<!-- Drift Detection Alert -->
+{% if drift_result.drift_detected %}
+<div class="card fade-in" style="border-left: 4px solid var(--danger);">
+  <div class="card-header">
+    <h3 class="card-title text-danger">
+      <i class="fa-solid fa-exclamation-triangle"></i>
+      🚨 Data Drift Detected
+    </h3>
+  </div>
+  
+  <div class="alert alert-danger">
+    <h4><i class="fa-solid fa-bolt"></i> Critical Alert</h4>
+    <p><strong>System drift detected in breast cancer prediction pipeline.</strong></p>
+    
+    <div class="mt-md">
+      <h5>Detection Details:</h5>
+      <ul class="list-unstyled">
+        {% for reason in drift_result.reasons %}
+        <li class="mb-sm">{{ reason }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    
+    <div class="mt-md">
+      <h5>Recommendations:</h5>
+      <ul class="list-unstyled">
+        <li class="mb-sm">🔍 Review recent validation failures</li>
+        <li class="mb-sm">📊 Check data source integrity</li>
+        <li class="mb-sm">🔄 Consider model retraining</li>
+        <li class="mb-sm">✅ Verify image preprocessing pipeline</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Stage-wise Performance -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">
+      <i class="fa-solid fa-layer-group"></i>
+      Validation Stage Performance
+    </h3>
+  </div>
+  
+  <div class="g4 gap-md">
+    <div class="stat-card">
+      <div class="stat-label">Basic Validation</div>
+      <div class="stat-value">{{ "%.1f"|format(performance_metrics.get('basic_validation_pass_rate', 0) * 100) }}%</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-label">OOD Detection</div>
+      <div class="stat-value">{{ "%.1f"|format(performance_metrics.get('ood_detection_pass_rate', 0) * 100) }}%</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-label">Mahalanobis</div>
+      <div class="stat-value">{{ "%.1f"|format(performance_metrics.get('mahalanobis_pass_rate', 0) * 100) }}%</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-label">Medical Classification</div>
+      <div class="stat-value">{{ "%.1f"|format(performance_metrics.get('medical_classification_pass_rate', 0) * 100) }}%</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-label">Anatomical Verification</div>
+      <div class="stat-value">{{ "%.1f"|format(performance_metrics.get('anatomical_pass_rate', 0) * 100) }}%</div>
+    </div>
+  </div>
+</div>
+
+<!-- Rejection Reasons Analysis -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">
+      <i class="fa-solid fa-chart-pie"></i>
+      Rejection Reasons Analysis
+    </h3>
+  </div>
+  
+  <div class="table-container">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Rejection Reason</th>
+          <th>Count</th>
+          <th>Percentage</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for reason, count in performance_metrics.get('rejection_reasons', {}).items() %}
+        <tr>
+          <td>{{ reason }}</td>
+          <td class="fw-700">{{ count }}</td>
+          <td>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: {{ (count / performance_metrics.get('total_predictions', 1) * 100)|round(1) }}%"></div>
+            </div>
+            {{ "%.1f"|format(count / performance_metrics.get('total_predictions', 1) * 100) }}%
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3" class="text-center text-dim">No rejection reasons recorded</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Monitoring Period Info -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">
+      <i class="fa-solid fa-clock"></i>
+      Monitoring Information
+    </h3>
+  </div>
+  
+  <div class="g2 gap-md">
+    <div class="stat-card">
+      <div class="stat-label">Monitoring Period</div>
+      <div class="stat-value">{{ performance_metrics.get('monitoring_period', 'N/A') }}</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-label">Total Rejections</div>
+      <div class="stat-value text-danger">{{ performance_metrics.get('total_rejections', 0) }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Export Controls -->
+<div class="d-flex gap-md mb-lg">
+  <a href="{{ url_for('admin_monitoring_export') }}" class="btn btn-primary">
+    <i class="fa-solid fa-download"></i>
+    Export Monitoring Data
+  </a>
+  
+  <button onclick="location.reload()" class="btn btn-secondary">
+    <i class="fa-solid fa-arrows-rotate"></i>
+    Refresh Data
+  </button>
+</div>
+
+<!-- Auto-refresh Script -->
+<script>
+// Auto-refresh every 30 seconds
+setTimeout(function() {
+  location.reload();
+}, 30000);
+
+// Real-time updates (would connect to WebSocket in production)
+function checkForUpdates() {
+  // In production, this would connect to real-time monitoring
+  console.log('Checking for system updates...');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% block title %}{% if is_admin %}All Predictions{% else %}My Predictions{% endif %}{% endblock %}{% block content %}
+<div class="page-header-row">
+  <div><h1 class="page-header" style="margin:0">{% if is_admin %}All Predictions{% else %}My Predictions{% endif %}</h1>
+    <p class="text-muted fs-13 mt-8">{{ predictions|length }} diagnosis records</p></div>
+</div>
+<div class="search-bar mb-16">
+  <form method="GET" style="display:flex;gap:8px;flex:1">
+    <input class="fc" type="text" name="q" value="{{ q }}" placeholder="Search patient name or ID…"/>
+    <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-magnifying-glass"></i></button>
+    {% if q %}<a href="{{ request.path }}" class="btn btn-secondary btn-sm"><i class="fa-solid fa-xmark"></i></a>{% endif %}
+  </form>
+</div>
+<div class="card">
+  {% if predictions %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Patient ID</th><th>Name</th><th>Gender</th><th>Result</th><th>Confidence</th>{% if is_admin %}<th>Doctor</th>{% endif %}<th>Date</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for p in predictions %}
+    <tr>
+      <td><span class="id-pill">{{ p.patient_id }}</span></td>
+      <td class="fw-700">{{ p.full_name }}</td>
+      <td class="text-muted fs-13">{{ p.gender or '—' }}</td>
+      <td><span class="badge {{ 'badge-mal' if p.result==1 else 'badge-ben' }}">{{ 'Malignant' if p.result==1 else 'Benign' }}</span></td>
+      <td class="td-mono">{{ "%.1f"|format(p.confidence) }}%</td>
+      {% if is_admin %}<td class="text-muted fs-13">{{ p.doctor_name or '—' }}</td>{% endif %}
+      <td class="text-dim fs-13">{{ p.created_at[:16] }}</td>
+      <td>
+        <div class="btn-group">
+          <a href="{{ url_for('prediction_detail',pred_id=p.id) }}" class="btn btn-outline btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a>
+          {% if session.role=='admin' %}
+          <a href="{{ url_for('export_pdf_single',patient_id=p.patient_id) }}" class="btn btn-warn btn-sm btn-icon" title="PDF"><i class="fa-solid fa-file-pdf"></i></a>{% endif %}
+          <form method="POST" action="{{ url_for('delete_prediction',pred_id=p.id) }}"
+            onsubmit="return confirm('Delete this prediction?')" style="display:inline">
+            <button type="submit" class="btn btn-danger btn-sm btn-icon"><i class="fa-solid fa-trash"></i></button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty"><div class="ei"><i class="fa-solid fa-microscope"></i></div><p>No predictions found{% if q %} for "{{ q }}"{% endif %}.</p></div>{% endif %}
+</div>
+{% if session.role=='admin' and predictions %}
+<div class="mt-16" style="text-align:right">
+  <a href="{{ url_for('export_pdf_all') }}" class="btn btn-warn"><i class="fa-solid fa-file-export"></i> Export All as PDF</a>
+</div>{% endif %}
+{% endblock %}

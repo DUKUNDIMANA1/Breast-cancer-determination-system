@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — BreastCare AI{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Dashboard <span class="live-dot"></span></h1>
+  <p class="page-subtitle">{{ session.full_name }} · {{ session.role | title }} view</p>
+</div>
+
+{# ── ADMIN ── #}
+{% if session.role == 'admin' %}
+<div class="g4 gap-md mb-lg">
+  <div class="stat-card">
+    <div class="stat-label">Total Patients</div>
+    <div class="stat-value text-accent">{{ total_patients }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Predictions</div>
+    <div class="stat-value text-accent">{{ total_predictions }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Malignant</div>
+    <div class="stat-value text-danger">{{ malignant }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Benign</div>
+    <div class="stat-value text-success">{{ benign }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Pending Lab</div>
+    <div class="stat-value text-warn">{{ pending_requests }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Users</div>
+    <div class="stat-value text-accent-tertiary">{{ total_users }}</div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Recent Predictions</h3>
+    <a href="{{ url_for('all_predictions') }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-right"></i>
+      View All
+    </a>
+  </div>
+  
+  {% if recent_predictions %}
+  <div class="table-container">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Patient ID</th>
+          <th>Name</th>
+          <th>Doctor</th>
+          <th>Result</th>
+          <th>Confidence</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in recent_predictions %}
+        <tr>
+          <td><span class="id-pill">{{ r.patient_id }}</span></td>
+          <td class="fw-700">{{ r.full_name }}</td>
+          <td class="text-muted">{{ r.doctor_name or '—' }}</td>
+          <td>
+            <span class="badge {% if r.result == 1 %}badge-danger{% else %}badge-success{% endif %}">
+              {% if r.result == 1 %}Malignant{% else %}Benign{% endif %}
+            </span>
+          </td>
+          <td class="mono">{{ "%.1f"|format(r.confidence) }}%</td>
+          <td class="text-muted">{{ r.created_at[:16] }}</td>
+          <td>
+            <a href="{{ url_for('prediction_detail', pred_id=r.id) }}" class="btn btn-outline btn-sm btn-icon">
+              <i class="fa-solid fa-eye"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <div class="ei"><i class="fa-solid fa-clipboard-list"></i></div>
+    <p>No predictions yet.</p>
+  </div>
+  {% endif %}
+</div>
+
+{# ── RECEPTIONIST ── #}
+{% elif session.role == 'receptionist' %}
+<div class="d-flex gap-md mb-lg">
+  <div class="stat-card">
+    <div class="stat-label">My Registrations</div>
+    <div class="stat-value text-accent">{{ total_patients }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Registered Today</div>
+    <div class="stat-value text-success">{{ today_patients }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Patients</div>
+    <div class="stat-value" style="color: var(--accent-tertiary)">{{ total_all }}</div>
+  </div>
+</div>
+<div style="display:flex;gap:12px;margin-bottom:16px;">
+  <a href="{{ url_for('register_patient') }}" class="btn btn-primary"><i class="fa-solid fa-user-plus"></i> Register New Patient</a>
+  <a href="{{ url_for('patients') }}" class="btn btn-outline"><i class="fa-solid fa-users"></i> View All Patients</a>
+</div>
+<div class="card">
+  <div class="card-title mb-12">Recently Registered</div>
+  {% if recent_patients %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Patient ID</th><th>Name</th><th>Gender</th><th>Contact</th><th>Registered</th><th></th></tr></thead>
+    <tbody>
+    {% for p in recent_patients %}
+    <tr>
+      <td><span class="id-pill">{{ p.patient_id }}</span></td>
+      <td class="fw-700">{{ p.full_name }}</td>
+      <td class="text-muted fs-13">{{ p.gender or '—' }}</td>
+      <td class="td-mono">{{ p.contact or '—' }}</td>
+      <td class="text-dim fs-13">{{ p.created_at[:16] }}</td>
+      <td><a href="{{ url_for('patient_detail',patient_id=p.patient_id) }}" class="btn btn-outline btn-sm btn-icon">👁</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty"><div class="ei"><i class="fa-solid fa-users"></i></div><p>No patients registered yet.</p></div>{% endif %}
+</div>
+
+{# ── LAB TECH ── #}
+{% elif session.role == 'lab' %}
+<div class="g3 mb-16">
+  <div class="stat-card"><div class="stat-label">Pending Requests</div><div class="stat-value text-warn">{{ pending_count }}</div></div>
+  <div class="stat-card"><div class="stat-label">Completed Today</div><div class="stat-value text-success">{{ done_today }}</div></div>
+  <div class="stat-card"><div class="stat-label">My Total Results</div><div class="stat-value text-accent">{{ total_done }}</div></div>
+</div>
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+    <div class="card-title" style="margin:0"><i class="fa-solid fa-clock"></i> Pending Lab Requests</div>
+    <a href="{{ url_for('lab_dashboard') }}" class="btn btn-secondary btn-sm">Full Queue →</a>
+  </div>
+  {% if pending_list %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Patient ID</th><th>Patient</th><th>Test</th><th>Doctor</th><th>Priority</th><th>Date</th><th></th></tr></thead>
+    <tbody>
+    {% for r in pending_list %}
+    <tr>
+      <td><span class="id-pill">{{ r.patient_id }}</span></td>
+      <td class="fw-700">{{ r.patient_name }}</td>
+      <td class="fs-13">{{ r.request_type }}</td>
+      <td class="text-muted fs-13">{{ r.doctor_name or '—' }}</td>
+      <td><span class="badge {{ 'badge-urgent' if r.priority=='urgent' else 'badge-normal' }}">{{ r.priority }}</span></td>
+      <td class="text-dim fs-13">{{ r.created_at[:16] }}</td>
+      <td><a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm">Upload →</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty"><div class="ei"><i class="fa-solid fa-check-circle"></i></div><p>No pending requests.</p></div>{% endif %}
+</div>
+
+{# ── DOCTOR ── #}
+{% elif session.role == 'doctor' %}
+<div class="g4 mb-16">
+  <div class="stat-card"><div class="stat-label">My Requests</div><div class="stat-value text-accent">{{ my_requests }}</div></div>
+  <div class="stat-card"><div class="stat-label">Awaiting Results</div><div class="stat-value text-warn">{{ awaiting }}</div>
+    {% if awaiting > 0 %}<div class="stat-sub" style="color:var(--warn)"><i class="fa-solid fa-bolt"></i> Action needed</div>{% endif %}</div>
+  <div class="stat-card"><div class="stat-label">My Predictions</div><div class="stat-value text-accent">{{ my_predictions }}</div></div>
+  <div class="stat-card"><div class="stat-label">Malignant / Benign</div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;margin-top:4px;">
+      <span class="text-danger">{{ malignant }}</span> / <span class="text-success">{{ benign }}</span>
+    </div></div>
+</div>
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+    <div class="card-title" style="margin:0"><i class="fa-solid fa-check-circle"></i> Results Ready for Review</div>
+    <a href="{{ url_for('new_request') }}" class="btn btn-primary btn-sm">+ New Request</a>
+  </div>
+  {% if ready_list %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Patient ID</th><th>Patient</th><th>Test Type</th><th>Priority</th><th>Ready Since</th><th></th></tr></thead>
+    <tbody>
+    {% for r in ready_list %}
+    <tr>
+      <td><span class="id-pill">{{ r.patient_id }}</span></td>
+      <td class="fw-700">{{ r.patient_name }}</td>
+      <td class="fs-13">{{ r.request_type }}</td>
+      <td><span class="badge {{ 'badge-urgent' if r.priority=='urgent' else 'badge-normal' }}">{{ r.priority }}</span></td>
+      <td class="text-dim fs-13">{{ r.updated_at[:16] }}</td>
+      <td><a href="{{ url_for('review_results',request_id=r.id) }}" class="btn btn-primary btn-sm">Review & Diagnose →</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty"><div class="ei"><i class="fa-solid fa-microscope"></i></div><p>No results waiting for review.</p></div>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

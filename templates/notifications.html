@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block title %}Notifications{% endblock %}{% block content %}
+<div class="page-header"><h1>Notifications</h1><p>Your activity feed and system alerts</p></div>
+<div class="card">
+  {% if notifications %}
+  <div style="display:flex;flex-direction:column;gap:2px;">
+    {% for n in notifications %}
+    <div style="padding:13px 16px;border-radius:9px;background:{{ 'var(--bg3)' if n.is_read else 'rgba(0,132,255,0.07)' }};
+      border:1px solid {{ 'var(--border)' if n.is_read else 'rgba(0,132,255,.2)' }};margin-bottom:4px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div>
+          {% if not n.is_read %}<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:8px;"></span>{% endif %}
+          <span style="font-size:14px;{{ 'font-weight:600' if not n.is_read else '' }}">{{ n.message }}</span>
+          {% if n.link %}<a href="{{ n.link }}" class="btn btn-outline btn-sm" style="margin-left:10px;">View →</a>{% endif %}
+        </div>
+        <span class="text-dim fs-12" style="white-space:nowrap">{{ n.created_at[:16] }}</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty"><div class="ei">🔔</div><p>No notifications yet.</p></div>{% endif %}
+</div>{% endblock %}

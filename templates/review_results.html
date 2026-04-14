@@ -1,0 +1,85 @@
+{% extends "base.html" %}{% block title %}Review & Diagnose{% endblock %}{% block content %}
+<div class="page-header-row">
+  <div><h1 class="page-header" style="margin:0">Review Results & Make Determination</h1>
+    <p class="text-muted fs-13 mt-8">Request #{{ req.id }} · <span class="id-pill">{{ req.patient_id }}</span> · {{ req.patient_name }}</p></div>
+  <a href="{{ url_for('lab_requests_list') }}" class="btn btn-outline btn-sm">← Back</a>
+</div>
+<div class="g2 mb-16">
+  <div class="card">
+    <div class="sec-label">👤 Patient & Request</div>
+    <div class="info-grid">
+      <div><div class="il">Patient</div><div class="iv fw-700">{{ req.patient_name }}</div></div>
+      <div><div class="il">Patient ID</div><div class="iv"><code>{{ req.patient_id }}</code></div></div>
+      <div><div class="il">Gender</div><div class="iv">{{ req.gender or '—' }}</div></div>
+      <div><div class="il">DOB</div><div class="iv">{{ req.date_of_birth or '—' }}</div></div>
+      <div><div class="il">Test Type</div><div class="iv">{{ req.request_type }}</div></div>
+      <div><div class="il">Priority</div><div class="iv"><span class="badge {{ 'badge-urgent' if req.priority=='urgent' else 'badge-normal' }}">{{ req.priority }}</span></div></div>
+    </div>
+    {% if req.clinical_notes %}
+    <div class="divider"></div>
+    <div class="il">Your Clinical Notes</div>
+    <div style="background:var(--bg3);padding:10px;border-radius:8px;font-size:13px;color:var(--text2);margin-top:6px;">{{ req.clinical_notes }}</div>{% endif %}
+  </div>
+  <div class="card">
+    <div class="sec-label">🧪 Lab Report</div>
+    <div class="info-grid">
+      <div><div class="il">Submitted By</div><div class="iv">{{ lab_result.lab_name or '—' }}</div></div>
+      <div><div class="il">Submitted At</div><div class="iv">{{ lab_result.submitted_at[:16] }}</div></div>
+    </div>
+    {% if lab_result.lab_notes %}
+    <div class="divider"></div>
+    <div class="il">Lab Technician Notes</div>
+    <div style="background:var(--bg3);padding:10px;border-radius:8px;font-size:13px;color:var(--text2);margin-top:6px;">{{ lab_result.lab_notes }}</div>{% endif %}
+    {% if lab_result.image_annotated %}
+    <div class="divider"></div>
+    <div class="il mb-8">Tissue Image</div>
+    <div class="img-compare">
+      {% if lab_result.image_path %}
+      <div class="img-box"><div class="img-label">Original</div><img src="/{{ lab_result.image_path }}"/></div>{% endif %}
+      <div class="img-box"><div class="img-label">Annotated Contours</div>
+        <img src="data:image/jpeg;base64,{{ lab_result.image_annotated }}"/></div>
+    </div>{% endif %}
+  </div>
+</div>
+<form method="POST">
+  <div class="card mb-16">
+    <div class="sec-label">📊 Cell Nucleus Feature Values (Editable)</div>
+    <div class="alert alert-info mb-12">Review the lab-uploaded values. You may adjust any value before running the AI prediction.</div>
+    <div class="sec-label" style="border:none;padding-top:0">Mean Features</div>
+    <div class="feat-grid mb-12">
+      {% for f in ['radius_mean','texture_mean','smoothness_mean','compactness_mean','concavity_mean','symmetry_mean','fractal_dimension_mean'] %}
+      <div class="feat-g"><label>{{ f }}</label>
+        <input type="number" name="{{ f }}" step="any" value="{{ '%.6f'|format(feat_values.get(f,feature_defaults.get(f,0))) }}" required/></div>
+      {% endfor %}
+    </div>
+    <div class="sec-label" style="border:none">Standard Error Features</div>
+    <div class="feat-grid mb-12">
+      {% for f in ['radius_se','texture_se','smoothness_se','compactness_se','concavity_se','concave points_se','symmetry_se','fractal_dimension_se'] %}
+      <div class="feat-g"><label>{{ f }}</label>
+        <input type="number" name="{{ f }}" step="any" value="{{ '%.6f'|format(feat_values.get(f,feature_defaults.get(f,0))) }}" required/></div>
+      {% endfor %}
+    </div>
+    <div class="sec-label" style="border:none">Worst Features</div>
+    <div class="feat-grid">
+      {% for f in ['smoothness_worst','compactness_worst','concavity_worst','symmetry_worst','fractal_dimension_worst'] %}
+      <div class="feat-g"><label>{{ f }}</label>
+        <input type="number" name="{{ f }}" step="any" value="{{ '%.6f'|format(feat_values.get(f,feature_defaults.get(f,0))) }}" required/></div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="card mb-16">
+    <div class="sec-label">🩺 Doctor's Determination Notes</div>
+    <textarea class="fc" name="doctor_notes" rows="3" placeholder="Clinical interpretation, treatment recommendations, follow-up plan…"></textarea>
+  </div>
+  <div class="card" style="background:rgba(0,132,255,0.05);border-color:rgba(0,132,255,.3);">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-weight:700;font-size:15px;">🤖 Run AI Prediction</div>
+        <div class="fs-13 text-muted mt-8">Logistic Regression model · 97.37% accuracy · ROC-AUC 99.32%</div>
+      </div>
+      <button type="submit" class="btn btn-primary" style="padding:13px 28px;font-size:15px;">
+        🔬 Make Determination →
+      </button>
+    </div>
+  </div>
+</form>{% endblock %}
