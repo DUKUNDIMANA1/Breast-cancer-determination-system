@@ -13,7 +13,7 @@
 <div class="card">
   {% if predictions %}
   <div class="table-wrap"><table>
-    <thead><tr><th>Patient ID</th><th>Name</th><th>Gender</th><th>Result</th><th>Confidence</th>{% if is_admin %}<th>Doctor</th>{% endif %}<th>Date</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Patient ID</th><th>Name</th><th>Gender</th><th>Result</th><th>Confidence</th>{% if is_admin %}<th>Doctor</th>{% endif %}<th>Date</th><th class="table-actions-head">Actions</th></tr></thead>
     <tbody>
     {% for p in predictions %}
     <tr>
@@ -24,7 +24,7 @@
       <td class="td-mono">{{ "%.1f"|format(p.confidence) }}%</td>
       {% if is_admin %}<td class="text-muted fs-13">{{ p.doctor_name or '—' }}</td>{% endif %}
       <td class="text-dim fs-13">{{ p.created_at[:16] }}</td>
-      <td>
+      <td class="table-actions-cell">
         <div class="btn-group">
           <a href="{{ url_for('prediction_detail',pred_id=p.id) }}" class="btn btn-outline btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a>
           {% if session.role=='admin' %}

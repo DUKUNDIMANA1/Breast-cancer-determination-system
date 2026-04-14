@@ -20,7 +20,7 @@
   <div class="table-wrap">
     {% if requests %}
     <table>
-      <thead><tr><th>Patient ID</th><th>Patient</th><th>Test Type</th><th>Priority</th><th>Status</th><th>Doctor</th><th>Date</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Patient ID</th><th>Patient</th><th>Test Type</th><th>Priority</th><th>Status</th><th>Doctor</th><th>Date</th><th class="table-actions-head">Actions</th></tr></thead>
       <tbody>
       {% for r in requests %}
       <tr>
@@ -34,7 +34,7 @@
           {% else %}<span class="badge badge-normal">{{ r.status }}</span>{% endif %}</td>
         <td class="text-muted fs-13">{{ r.doctor_name or '—' }}</td>
         <td class="text-dim fs-13">{{ r.created_at[:16] }}</td>
-        <td>
+        <td class="table-actions-cell">
           {% if r.status=='pending' and session.role in ('lab','admin') %}
           <a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm"><i class="fa-solid fa-flask"></i> Upload</a>
           {% elif r.status=='results_ready' and session.role in ('doctor','admin') %}

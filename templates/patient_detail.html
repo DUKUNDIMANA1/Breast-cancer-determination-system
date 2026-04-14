@@ -66,7 +66,7 @@
   </div>
   {% if requests %}
   <div class="table-wrap"><table>
-    <thead><tr><th>#</th><th>Test Type</th><th>Priority</th><th>Status</th><th>Doctor</th><th>Date</th><th></th></tr></thead>
+    <thead><tr><th>#</th><th>Test Type</th><th>Priority</th><th>Status</th><th>Doctor</th><th>Date</th><th class="table-actions-head"></th></tr></thead>
     <tbody>
     {% for r in requests %}
     <tr>
@@ -81,7 +81,7 @@
       </td>
       <td class="text-muted fs-13">{{ r.doctor_name or '—' }}</td>
       <td class="text-dim fs-13">{{ r.created_at[:16] }}</td>
-      <td>
+      <td class="table-actions-cell">
         {% if r.status=='pending' and session.role in ('lab','admin') %}
         <a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm"><i class="fa-solid fa-upload"></i> Upload</a>
         {% elif r.status=='results_ready' and session.role in ('doctor','admin') %}
@@ -99,7 +99,7 @@
   <div class="card-title mb-12"><i class="fa-solid fa-chart-column"></i> Diagnosis History ({{ predictions|length }})</div>
   {% if predictions %}
   <div class="table-wrap"><table>
-    <thead><tr><th>Result</th><th>Confidence</th><th>Doctor</th><th>Date</th><th></th></tr></thead>
+    <thead><tr><th>Result</th><th>Confidence</th><th>Doctor</th><th>Date</th><th class="table-actions-head"></th></tr></thead>
     <tbody>
     {% for p in predictions %}
     <tr>
@@ -107,7 +107,7 @@
       <td class="td-mono">{{ "%.1f"|format(p.confidence) }}%</td>
       <td class="text-muted fs-13">{{ p.doctor_name or '—' }}</td>
       <td class="text-dim fs-13">{{ p.created_at[:16] }}</td>
-      <td><a href="{{ url_for('prediction_detail',pred_id=p.id) }}" class="btn btn-outline btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a></td>
+      <td class="table-actions-cell"><a href="{{ url_for('prediction_detail',pred_id=p.id) }}" class="btn btn-outline btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a></td>
     </tr>
     {% endfor %}
     </tbody>

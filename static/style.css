@@ -911,6 +911,38 @@ select.form-control option {
   text-overflow: ellipsis;
 }
 
+.patients-table .actions-head {
+  width: 150px;
+}
+
+.patients-table .actions-cell {
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.patients-table .actions-cell .btn-group {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.table-actions-head {
+  width: 150px;
+}
+
+.table-actions-cell {
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.table-actions-cell .btn-group {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .table tbody tr:hover td {
   background: rgba(13, 40, 71, 0.4);
 }

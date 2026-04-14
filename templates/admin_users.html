@@ -186,7 +186,7 @@
           <th>Contact</th>
           <th>Role</th>
           <th>Joined</th>
-          <th>Actions</th>
+          <th class="table-actions-head">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -203,7 +203,7 @@
             </span>
           </td>
           <td class="text-muted">{{ u.created_at[:10] }}</td>
-          <td>
+          <td class="table-actions-cell">
             <div class="btn-group">
               <a href="{{ url_for('edit_user', uid=u.id) }}" 
                  class="btn btn-outline btn-sm" title="Edit User">
