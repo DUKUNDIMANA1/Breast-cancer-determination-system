@@ -121,7 +121,7 @@
       <td class="text-muted fs-13">{{ p.gender or '—' }}</td>
       <td class="td-mono">{{ p.contact or '—' }}</td>
       <td class="text-dim fs-13">{{ p.created_at[:16] }}</td>
-      <td><a href="{{ url_for('patient_detail',patient_id=p.patient_id) }}" class="btn btn-outline btn-sm btn-icon">👁</a></td>
+      <td><a href="{{ url_for('patient_detail',patient_id=p.patient_id) }}" class="btn btn-outline btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a></td>
     </tr>
     {% endfor %}
     </tbody>
@@ -139,7 +139,7 @@
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
     <div class="card-title" style="margin:0"><i class="fa-solid fa-clock"></i> Pending Lab Requests</div>
-    <a href="{{ url_for('lab_dashboard') }}" class="btn btn-secondary btn-sm">Full Queue →</a>
+    <a href="{{ url_for('lab_dashboard') }}" class="btn btn-secondary btn-sm">Full Queue <i class="fa-solid fa-arrow-right"></i></a>
   </div>
   {% if pending_list %}
   <div class="table-wrap"><table>
@@ -153,7 +153,7 @@
       <td class="text-muted fs-13">{{ r.doctor_name or '—' }}</td>
       <td><span class="badge {{ 'badge-urgent' if r.priority=='urgent' else 'badge-normal' }}">{{ r.priority }}</span></td>
       <td class="text-dim fs-13">{{ r.created_at[:16] }}</td>
-      <td><a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm">Upload →</a></td>
+      <td><a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm"><i class="fa-solid fa-upload"></i> Upload</a></td>
     </tr>
     {% endfor %}
     </tbody>
@@ -189,7 +189,7 @@
       <td class="fs-13">{{ r.request_type }}</td>
       <td><span class="badge {{ 'badge-urgent' if r.priority=='urgent' else 'badge-normal' }}">{{ r.priority }}</span></td>
       <td class="text-dim fs-13">{{ r.updated_at[:16] }}</td>
-      <td><a href="{{ url_for('review_results',request_id=r.id) }}" class="btn btn-primary btn-sm">Review & Diagnose →</a></td>
+      <td><a href="{{ url_for('review_results',request_id=r.id) }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-stethoscope"></i> Review & Diagnose</a></td>
     </tr>
     {% endfor %}
     </tbody>

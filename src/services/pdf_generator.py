@@ -10,7 +10,8 @@ from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
 from reportlab.lib.styles import ParagraphStyle
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-OUT      = os.path.join(BASE_DIR, 'static', 'reports')
+PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
+OUT      = os.path.join(PROJECT_ROOT, 'static', 'reports')
 os.makedirs(OUT, exist_ok=True)
 
 def _get_db():

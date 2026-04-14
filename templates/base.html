@@ -3,26 +3,49 @@
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>{% block title %}BreastCare AI{% endblock %}</title>
+<script>
+  (function () {
+    const savedTheme = localStorage.getItem('themePreference') || 'system';
+    const effectiveTheme = savedTheme === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : savedTheme;
+    document.documentElement.setAttribute('data-theme', effectiveTheme);
+    document.documentElement.style.colorScheme = effectiveTheme;
+  })();
+</script>
 <!-- Google Fonts -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/css/intlTelInput.css"/>
 <!-- Consistent Design System -->
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 {% block extra_head %}{% endblock %}
 </head>
 <body>
+<div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 <div class="layout">
 {% if session.user_id %}
 <nav class="topbar">
-  <div class="topbar-logo"><i class="fa-solid fa-heart-pulse"></i>BreastCare <span style="color:var(--accent3)">AI</span><div class="logo-dot"></div></div>
-  <div class="topbar-sp"></div>
+  <button id="mobile-menu-btn" class="mobile-menu-btn" type="button" aria-label="Toggle navigation">
+    <i class="fa-solid fa-bars"></i>
+  </button>
+  <div class="topbar-logo"><i class="fa-solid fa-heart-pulse"></i>BreastCare <span style="color:var(--accent-tertiary)">AI</span><div class="logo-dot"></div></div>
+  <div class="topbar-spacer"></div>
   <div class="topbar-right">
+    <label class="theme-switch" for="theme-select" title="Theme">
+      <i class="fa-solid fa-circle-half-stroke"></i>
+      <select id="theme-select" aria-label="Select theme">
+        <option value="system">System</option>
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+    </label>
     {% set uc = unread_count() %}
     <a href="{{ url_for('notifications') }}" class="notif-btn" title="Notifications">
       <i class="fa-solid fa-bell"></i>{% if uc > 0 %}<span class="notif-badge">{{ uc }}</span>{% endif %}
     </a>
-    <span class="role-pill rp-{{ session.role }}">{{ session.role }}</span>
+    <span class="role-pill role-{{ session.role }}">{{ session.role }}</span>
     <div class="user-chip">
       <div class="av">{{ session.full_name[0].upper() }}</div>
       <div>
@@ -33,6 +56,7 @@
     <a href="{{ url_for('signout') }}" class="btn btn-secondary btn-sm"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</a>
   </div>
 </nav>
+<div id="mobile-nav-overlay" class="mobile-nav-overlay"></div>
 <div class="main-wrap">
   <aside class="sidebar">
     <div class="nav-sec">Main</div>
@@ -83,11 +107,7 @@
   </aside>
   <main class="page-area fade-in">
     {% with msgs=get_flashed_messages(with_categories=true) %}
-      {% for cat,msg in msgs %}
-        <div class="alert alert-{{ cat }}">
-          <span>{% if cat=='success' %}<i class="fa-solid fa-check"></i>{% elif cat=='danger' %}<i class="fa-solid fa-xmark"></i>{% elif cat=='warning' %}<i class="fa-solid fa-triangle-exclamation"></i>{% else %}<i class="fa-solid fa-circle-info"></i>{% endif %}</span>{{ msg }}
-        </div>
-      {% endfor %}
+      <script id="flash-data" type="application/json">{{ msgs|tojson }}</script>
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
@@ -96,6 +116,169 @@
 <main style="flex:1;min-height:100vh;">{% block auth_content %}{% endblock %}</main>
 {% endif %}
 </div>
+<script src="https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/js/intlTelInput.min.js"></script>
+<script>
+  (function () {
+    const themeSelect = document.getElementById('theme-select');
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+
+    function resolveTheme(preference) {
+      if (preference === 'system') {
+        return mq.matches ? 'dark' : 'light';
+      }
+      return preference;
+    }
+
+    function applyTheme(preference) {
+      const effective = resolveTheme(preference);
+      document.documentElement.setAttribute('data-theme', effective);
+      document.documentElement.style.colorScheme = effective;
+    }
+
+    if (themeSelect) {
+      const stored = localStorage.getItem('themePreference') || 'system';
+      themeSelect.value = stored;
+      applyTheme(stored);
+      themeSelect.addEventListener('change', function (event) {
+        const preference = event.target.value;
+        localStorage.setItem('themePreference', preference);
+        applyTheme(preference);
+      });
+      mq.addEventListener('change', function () {
+        const preference = localStorage.getItem('themePreference') || 'system';
+        if (preference === 'system') {
+          applyTheme(preference);
+        }
+      });
+    }
+
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('mobile-nav-overlay');
+
+    function closeMobileNav() {
+      if (!sidebar || !overlay) return;
+      sidebar.classList.remove('open');
+      overlay.classList.remove('open');
+    }
+
+    if (mobileMenuBtn && sidebar && overlay) {
+      mobileMenuBtn.addEventListener('click', function () {
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('open');
+      });
+      overlay.addEventListener('click', closeMobileNav);
+      window.addEventListener('resize', function () {
+        if (window.innerWidth > 640) {
+          closeMobileNav();
+        }
+      });
+    }
+
+    if (window.intlTelInput) {
+      const phoneInputs = document.querySelectorAll('input[data-phone-input]');
+      phoneInputs.forEach(function (input) {
+        if (input.dataset.phoneReady === '1') return;
+        const iti = window.intlTelInput(input, {
+          initialCountry: 'rw',
+          separateDialCode: true,
+          strictMode: true,
+          nationalMode: false,
+          autoPlaceholder: 'polite',
+          utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/js/utils.js'
+        });
+
+        if (input.value) {
+          iti.setNumber(input.value);
+        }
+
+        const setValidationState = function () {
+          const raw = input.value.trim();
+          if (!raw) {
+            input.setCustomValidity('');
+            return;
+          }
+          const fullNumber = iti.getNumber();
+          const digits = (fullNumber.match(/\d/g) || []).length;
+          if (digits < 10 || !iti.isValidNumber()) {
+            input.setCustomValidity('Enter a valid phone number with country code (minimum 10 digits).');
+          } else {
+            input.setCustomValidity('');
+            input.value = fullNumber;
+          }
+        };
+
+        input.addEventListener('blur', setValidationState);
+        input.addEventListener('input', function () {
+          input.setCustomValidity('');
+        });
+
+        const form = input.closest('form');
+        if (form) {
+          form.addEventListener('submit', function () {
+            setValidationState();
+            if (!input.validationMessage) {
+              input.value = iti.getNumber();
+            }
+          });
+        }
+
+        input.dataset.phoneReady = '1';
+      });
+    }
+
+    const flashNode = document.getElementById('flash-data');
+    const toastRoot = document.getElementById('toast-root');
+    if (!flashNode || !toastRoot) return;
+
+    let flashes = [];
+    try {
+      flashes = JSON.parse(flashNode.textContent || '[]');
+    } catch (e) {
+      flashes = [];
+    }
+
+    const categoryMap = {
+      success: { icon: 'fa-check', className: 'toast-success' },
+      danger: { icon: 'fa-xmark', className: 'toast-danger' },
+      error: { icon: 'fa-xmark', className: 'toast-danger' },
+      warning: { icon: 'fa-triangle-exclamation', className: 'toast-warning' },
+      info: { icon: 'fa-circle-info', className: 'toast-info' }
+    };
+
+    function pushToast(category, message) {
+      const safeCategory = categoryMap[category] ? category : 'info';
+      const meta = categoryMap[safeCategory];
+      const toast = document.createElement('div');
+      toast.className = 'toast ' + meta.className;
+      toast.innerHTML =
+        '<i class="fa-solid ' + meta.icon + '"></i>' +
+        '<div class="toast-message"></div>' +
+        '<button class="toast-close" type="button" aria-label="Dismiss notification"><i class="fa-solid fa-xmark"></i></button>';
+      toast.querySelector('.toast-message').textContent = message;
+
+      const closeButton = toast.querySelector('.toast-close');
+      const removeToast = function () {
+        toast.classList.add('toast-hide');
+        setTimeout(function () {
+          if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+          }
+        }, 180);
+      };
+
+      closeButton.addEventListener('click', removeToast);
+      toastRoot.appendChild(toast);
+      setTimeout(removeToast, 5000);
+    }
+
+    flashes.forEach(function (entry) {
+      if (Array.isArray(entry) && entry.length >= 2) {
+        pushToast(entry[0], entry[1]);
+      }
+    });
+  })();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

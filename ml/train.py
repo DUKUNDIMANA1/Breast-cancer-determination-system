@@ -1,7 +1,7 @@
 """
 BreastCare AI — Model Training Script
 Algorithm: Logistic Regression (Accuracy: 97.37%)
-Run: python train.py
+Run: python ml/train.py
 """
 import os, pickle, warnings
 import pandas as pd
@@ -14,9 +14,10 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-CSV_PATH    = os.path.join(BASE_DIR, 'breast_cancer_cleaned.csv')
-MODEL_PATH  = os.path.join(BASE_DIR, 'model.pkl')
-SCALER_PATH = os.path.join(BASE_DIR, 'scaler.pkl')
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+CSV_PATH    = os.path.join(PROJECT_ROOT, 'data', 'breast_cancer_cleaned.csv')
+MODEL_PATH  = os.path.join(PROJECT_ROOT, 'artifacts', 'model.pkl')
+SCALER_PATH = os.path.join(PROJECT_ROOT, 'artifacts', 'scaler.pkl')
 
 FEATURES = [
     'radius_mean','texture_mean','smoothness_mean','compactness_mean',

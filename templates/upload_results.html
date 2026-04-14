@@ -4,7 +4,7 @@
   <p class="page-subtitle">Request #{{ req.id }} · <span class="id-pill">{{ req.patient_id }}</span> · {{ req.patient_name }}</p>
 </div>
 <div class="d-flex justify-between align-center mb-lg">
-  <a href="{{ url_for('lab_dashboard') }}" class="btn btn-outline btn-sm">← Back</a>
+  <a href="{{ url_for('lab_dashboard') }}" class="btn btn-outline btn-sm"><i class="fa-solid fa-arrow-left"></i> Back</a>
 </div>
 
 <!-- Request info -->
@@ -33,7 +33,7 @@
   </div>
   <div class="card-body">
     {% if img_loaded %}
-    <div class="alert alert-success mb-md">✓ Features auto-extracted from image — review values below and submit.</div>{% endif %}
+    <div class="alert alert-success mb-md"><i class="fa-solid fa-check"></i> Features auto-extracted from image - review values below and submit.</div>{% endif %}
     <form method="POST" action="{{ url_for('lab_image_extract') }}" enctype="multipart/form-data">
       <input type="hidden" name="request_id" value="{{ req.id }}"/>
       <div class="upload-zone" id="uz">
@@ -90,7 +90,7 @@
     </div>
   </div>
   <div class="d-flex gap-md">
-    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check-circle"></i> Submit Results — Notify Doctor</button>
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check-circle"></i> Submit Results and Notify Doctor</button>
     <a href="{{ url_for('lab_dashboard') }}" class="btn btn-secondary">Cancel</a>
   </div>
 </form>

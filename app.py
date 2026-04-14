@@ -14,15 +14,17 @@ import hashlib, secrets, os, pickle, json
 from datetime import datetime
 from functools import wraps
 from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
+import re
+import phonenumbers
 
 # ── Absolute paths ────────────────────────────────────────────────────────────
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH  = os.path.join(BASE_DIR, 'model.pkl')
-SCALER_PATH = os.path.join(BASE_DIR, 'scaler.pkl')
-CSV_PATH    = os.path.join(BASE_DIR, 'breast_cancer_cleaned.csv')
+MODEL_PATH  = os.path.join(BASE_DIR, 'artifacts', 'model.pkl')
+SCALER_PATH = os.path.join(BASE_DIR, 'artifacts', 'scaler.pkl')
+CSV_PATH    = os.path.join(BASE_DIR, 'data', 'breast_cancer_cleaned.csv')
+
+# Load environment variables from a single source of truth.
+load_dotenv(os.path.join(BASE_DIR, '.env'), override=False)
 
 app = Flask(__name__,
             template_folder=os.path.join(BASE_DIR, 'templates'),
@@ -35,17 +37,8 @@ os.makedirs(app.config['UPLOAD_FOLDER'],  exist_ok=True)
 os.makedirs(app.config['REPORTS_FOLDER'], exist_ok=True)
 
 # ── MongoDB Atlas Connection ───────────────────────────────────────────────────
-# Read MONGO_URI directly to avoid truncation issues
-try:
-    with open(os.path.join(BASE_DIR, '.env'), 'r') as f:
-        for line in f:
-            if line.startswith('MONGO_URI='):
-                MONGO_URI = line.strip().split('=', 1)[1]
-                break
-        else:
-            MONGO_URI = 'mongodb://localhost:27017/breastcare_ai'
-except Exception:
-    MONGO_URI = 'mongodb://localhost:27017/breastcare_ai'
+MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/breastcare_ai')
+MONGO_URI_DIRECT = os.environ.get('MONGO_URI_DIRECT')
 
 MONGO_DB  = os.environ.get('MONGO_DB_NAME', 'breastcare_ai')
 
@@ -60,46 +53,54 @@ def connect_mongodb():
     global client, db, MONGO_OK, MONGO_ERROR
     
     try:
-        # Enhanced connection with proper SSL handling
-        import ssl
         import urllib.parse
         
-        # Parse URI and configure connection parameters
-        parsed = urllib.parse.urlparse(MONGO_URI)
-        
-        if parsed.scheme.startswith('mongodb+srv'):
-            # MongoDB Atlas connection
-            query = urllib.parse.parse_qs( parsed.query)
-            query['tlsAllowInvalidCertificates'] = ['true']
-            query['retryWrites'] = ['true']
-            new_query = urllib.parse.urlencode(query, doseq=True)
-            modified_uri = parsed._replace(query=new_query).geturl()
-            
-            client = MongoClient(
-                modified_uri,
-                serverSelectionTimeoutMS=30000,
-                connectTimeoutMS=20000,
-                socketTimeoutMS=20000,
-                retryWrites=True,
-                tlsAllowInvalidCertificates=True,
-                retryReads=True
-            )
+        # Try primary URI first. If SRV/SSL fails and direct URI exists, fallback.
+        uri_candidates = [MONGO_URI]
+        if MONGO_URI_DIRECT:
+            uri_candidates.append(MONGO_URI_DIRECT)
+
+        last_error = None
+        for idx, uri in enumerate(uri_candidates):
+            parsed = urllib.parse.urlparse(uri)
+            is_srv = parsed.scheme.startswith('mongodb+srv')
+            is_local = parsed.hostname in ('localhost', '127.0.0.1')
+
+            if is_local:
+                current_client = MongoClient(
+                    uri,
+                    serverSelectionTimeoutMS=5000,
+                    connectTimeoutMS=5000
+                )
+            else:
+                # Keep Atlas defaults for TLS negotiation instead of forcing custom flags.
+                current_client = MongoClient(
+                    uri,
+                    serverSelectionTimeoutMS=30000,
+                    connectTimeoutMS=20000,
+                    socketTimeoutMS=20000,
+                    retryWrites=True,
+                    retryReads=True
+                )
+
+            try:
+                current_client.admin.command('ping')
+                client = current_client
+                db = client[MONGO_DB]
+                if is_srv or not is_local:
+                    print(f"[BreastCare AI] [OK] Connected to MongoDB Atlas - database: '{MONGO_DB}'")
+                    if idx == 1:
+                        print("[BreastCare AI] ℹ️  Connected using MONGO_URI_DIRECT fallback.")
+                else:
+                    print(f"[BreastCare AI] [OK] Connected to Local MongoDB - database: '{MONGO_DB}'")
+                break
+            except Exception as e:
+                last_error = e
+                if idx == 0 and MONGO_URI_DIRECT:
+                    print("[BreastCare AI] [WARN] Primary MongoDB URI failed. Trying MONGO_URI_DIRECT fallback...")
+                continue
         else:
-            # Local MongoDB connection
-            client = MongoClient(
-                MONGO_URI,
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=5000
-            )
-        
-        # Test connection
-        client.admin.command('ping')
-        db = client[MONGO_DB]
-        
-        if parsed.scheme.startswith('mongodb+srv'):
-            print(f"[BreastCare AI] ✅ Connected to MongoDB Atlas — database: '{MONGO_DB}'")
-        else:
-            print(f"[BreastCare AI] ✅ Connected to Local MongoDB — database: '{MONGO_DB}'")
+            raise last_error
         
         MONGO_OK = True
         MONGO_ERROR = None
@@ -111,17 +112,21 @@ def connect_mongodb():
         
         # Provide helpful error messages
         if "DNS query name does not exist" in error_msg:
-            print("[BreastCare AI] ❌ MongoDB Atlas DNS resolution failed.")
+            print("[BreastCare AI] [ERROR] MongoDB Atlas DNS resolution failed.")
             print("[BreastCare AI]    Please check your MongoDB Atlas cluster name and URI.")
             print("[BreastCare AI]    To fix: Update MONGO_URI in .env with correct Atlas URI")
+        elif "SSL handshake failed" in error_msg or "TLSV1_ALERT_INTERNAL_ERROR" in error_msg:
+            print("[BreastCare AI] [ERROR] MongoDB Atlas TLS handshake failed.")
+            print("[BreastCare AI]    Check Atlas Network Access (IP allowlist) and try MONGO_URI_DIRECT in .env.")
+            print("[BreastCare AI]    Also ensure no VPN/antivirus/proxy is intercepting TLS traffic.")
         elif "Connection refused" in error_msg or "failed to connect" in error_msg:
-            print("[BreastCare AI] ❌ Local MongoDB connection failed.")
+            print("[BreastCare AI] [ERROR] Local MongoDB connection failed.")
             print("[BreastCare AI]    Please ensure MongoDB is installed and running locally.")
             print("[BreastCare AI]    To install: Download MongoDB Community Server")
         else:
-            print(f"[BreastCare AI] ⚠️  MongoDB connection failed: {error_msg}")
+            print(f"[BreastCare AI] [WARN] MongoDB connection failed: {error_msg}")
         
-        print("[BreastCare AI]    Running in OFFLINE mode — data will not persist.")
+        print("[BreastCare AI]    Running in OFFLINE mode - data will not persist.")
         print("[BreastCare AI]    Full error traceback:")
         traceback.print_exc()
         
@@ -142,7 +147,7 @@ def col(name):
     if db is None:
         # Try to reconnect
         if connect_mongodb():
-            print(f"[BreastCare AI] 🔗 Reconnected to MongoDB Atlas")
+            print(f"[BreastCare AI] [INFO] Reconnected to MongoDB Atlas")
         else:
             raise RuntimeError("MongoDB is not connected. Please check your Atlas URI in .env")
     
@@ -205,6 +210,36 @@ model, scaler = _load_model()
 def hash_pw(p):  return hashlib.sha256(p.encode()).hexdigest()
 def gen_pid():   return f"BC-{datetime.now().strftime('%Y%m')}-{secrets.token_hex(3).upper()}"
 def now_str():   return datetime.now().isoformat()
+
+def is_valid_email(email):
+    """Basic but strict email format validation."""
+    if not email:
+        return False
+    return re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) is not None
+
+def normalize_phone_number(raw_phone):
+    """
+    Validate and normalize phone to E.164 format.
+    Requires international format with country code (+...).
+    """
+    if not raw_phone:
+        return "", None
+
+    phone = raw_phone.strip()
+    digit_count = sum(ch.isdigit() for ch in phone)
+    if digit_count < 10:
+        return None, "Phone number must contain at least 10 digits."
+    if not phone.startswith("+"):
+        return None, "Phone number must start with '+' and include country code."
+
+    try:
+        parsed = phonenumbers.parse(phone, None)
+        if not phonenumbers.is_valid_number(parsed):
+            return None, "Enter a valid phone number with country code."
+        normalized = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+        return normalized, None
+    except phonenumbers.NumberParseException:
+        return None, "Enter a valid international phone number (example: +2507XXXXXXXX)."
 
 def oid(id_str):
     """Safely convert string to ObjectId."""
@@ -446,17 +481,28 @@ def patients():
 def register_patient():
     if request.method == 'POST':
         fn = request.form.get('full_name','').strip()
+        email = request.form.get('email','').strip()
+        contact_input = request.form.get('contact','').strip()
+        contact, phone_error = normalize_phone_number(contact_input)
+
         if not fn:
             flash('Patient name required.','danger')
             return render_template('register_patient.html', user=cu(), patient=None, editing=False)
+        if email and not is_valid_email(email):
+            flash('Please provide a valid email address.','danger')
+            return render_template('register_patient.html', user=cu(), patient=None, editing=False)
+        if phone_error:
+            flash(phone_error, 'danger')
+            return render_template('register_patient.html', user=cu(), patient=None, editing=False)
+
         pid = gen_pid()
         col('patients').insert_one({
             'patient_id':  pid,
             'full_name':   fn,
             'date_of_birth': request.form.get('date_of_birth',''),
             'gender':      request.form.get('gender',''),
-            'contact':     request.form.get('contact',''),
-            'email':       request.form.get('email',''),
+            'contact':     contact,
+            'email':       email,
             'address':     request.form.get('address',''),
             'registered_by': session['user_id'],
             'created_at':  now_str()
@@ -498,12 +544,27 @@ def edit_patient(patient_id):
         flash('Not found.','danger'); return redirect(url_for('patients'))
     p = doc(p)
     if request.method == 'POST':
+        full_name = request.form.get('full_name','').strip()
+        email = request.form.get('email','').strip()
+        contact_input = request.form.get('contact','').strip()
+        contact, phone_error = normalize_phone_number(contact_input)
+
+        if not full_name:
+            flash('Patient name required.','danger')
+            return render_template('register_patient.html', user=cu(), patient=p, editing=True)
+        if email and not is_valid_email(email):
+            flash('Please provide a valid email address.','danger')
+            return render_template('register_patient.html', user=cu(), patient=p, editing=True)
+        if phone_error:
+            flash(phone_error, 'danger')
+            return render_template('register_patient.html', user=cu(), patient=p, editing=True)
+
         col('patients').update_one({'patient_id': patient_id}, {'$set':{
-            'full_name':     request.form.get('full_name',''),
+            'full_name':     full_name,
             'date_of_birth': request.form.get('date_of_birth',''),
             'gender':        request.form.get('gender',''),
-            'contact':       request.form.get('contact',''),
-            'email':         request.form.get('email',''),
+            'contact':       contact,
+            'email':         email,
             'address':       request.form.get('address',''),
         }})
         flash('Patient updated.','success')
@@ -612,7 +673,7 @@ def upload_results(request_id):
         img_path = None; img_ann = None
         img_file = request.files.get('image')
         if img_file and img_file.filename:
-            from image_processor_advanced import generate_annotated_image, extract_features
+            from src.services.image_processor_advanced import generate_annotated_image, extract_features
             fb = img_file.read()
             sn = f"{req['patient_id']}_{request_id}.jpg"
             ip = os.path.join(app.config['UPLOAD_FOLDER'], sn)
@@ -655,8 +716,8 @@ def lab_image_extract():
     if not f or not f.filename:
         flash('Select an image.','danger')
         return redirect(url_for('upload_results', request_id=rid))
-    from image_processor_advanced import extract_features
-    from monitoring_system import log_prediction_event, check_system_drift, generate_drift_alert
+    from src.services.image_processor_advanced import extract_features
+    from src.services.monitoring_system import log_prediction_event, check_system_drift, generate_drift_alert
     try:
         features = extract_features(f.read())
         
@@ -820,7 +881,7 @@ def delete_prediction(pred_id):
 @app.route('/export/pdf/<patient_id>')
 @role_required('admin')
 def export_pdf_single(patient_id):
-    from pdf_generator import generate_single_pdf
+    from src.services.pdf_generator import generate_single_pdf
     path = generate_single_pdf(patient_id)
     if not path:
         flash('No predictions found.','danger')
@@ -832,7 +893,7 @@ def export_pdf_single(patient_id):
 @app.route('/export/pdf/all')
 @role_required('admin')
 def export_pdf_all():
-    from pdf_generator import generate_all_pdf
+    from src.services.pdf_generator import generate_all_pdf
     return send_file(generate_all_pdf(), as_attachment=True,
                      download_name='all_patients_report.pdf',
                      mimetype='application/pdf')
@@ -847,31 +908,33 @@ def admin_users():
 @app.route('/admin/users/create', methods=['GET','POST'])
 @role_required('admin')
 def create_user():
+    users = docs(col('users').find({},{'password':0}))
     if request.method == 'POST':
         full_name = request.form.get('full_name','').strip()
         username = request.form.get('username','').strip()
         email = request.form.get('email','').strip()
-        contact = request.form.get('contact','').strip()
+        contact_input = request.form.get('contact','').strip()
         role = request.form.get('role','').strip()
         password = request.form.get('password','').strip()
+        contact, phone_error = normalize_phone_number(contact_input)
         
         if not all([full_name, username, email, role, password]):
-            flash('All fields are required.','danger')
-            return render_template('admin_users.html', user=cu())
-        
-        # Validate phone number (must be 14 digits)
-        if contact and not contact.isdigit():
-            flash('Phone number must contain only digits.','danger')
-            return render_template('admin_users.html', user=cu())
-        
-        if contact and len(contact) != 14:
-            flash('Phone number must be exactly 14 digits.','danger')
-            return render_template('admin_users.html', user=cu())
+            flash('Please fill all required fields to create a user.','danger')
+            return render_template('admin_users.html', user=cu(), users=users)
+        if not is_valid_email(email):
+            flash('Please provide a valid email address.','danger')
+            return render_template('admin_users.html', user=cu(), users=users)
+        if phone_error:
+            flash(phone_error, 'danger')
+            return render_template('admin_users.html', user=cu(), users=users)
+        if len(password) < 6:
+            flash('Password must be at least 6 characters long.','danger')
+            return render_template('admin_users.html', user=cu(), users=users)
         
         # Check if username or email already exists
         if col('users').find_one({'$or': [{'username': username}, {'email': email}]}):
             flash('Username or email already exists.','danger')
-            return render_template('admin_users.html', user=cu())
+            return render_template('admin_users.html', user=cu(), users=users)
         
         # Create new user
         user_data = {
@@ -904,21 +967,22 @@ def edit_user(uid):
         full_name = request.form.get('full_name','').strip()
         username = request.form.get('username','').strip()
         email = request.form.get('email','').strip()
-        contact = request.form.get('contact','').strip()
+        contact_input = request.form.get('contact','').strip()
         role = request.form.get('role','').strip()
         password = request.form.get('password','').strip()
+        contact, phone_error = normalize_phone_number(contact_input)
         
         if not all([full_name, username, email, role]):
             flash('Name, username, email, and role are required.','danger')
             return render_template('admin_users.html', user=cu(), edit_user=edit_user)
-        
-        # Validate phone number (must be 14 digits)
-        if contact and not contact.isdigit():
-            flash('Phone number must contain only digits.','danger')
+        if not is_valid_email(email):
+            flash('Please provide a valid email address.','danger')
             return render_template('admin_users.html', user=cu(), edit_user=edit_user)
-        
-        if contact and len(contact) != 14:
-            flash('Phone number must be exactly 14 digits.','danger')
+        if phone_error:
+            flash(phone_error, 'danger')
+            return render_template('admin_users.html', user=cu(), edit_user=edit_user)
+        if password and len(password) < 6:
+            flash('If changing password, use at least 6 characters.','danger')
             return render_template('admin_users.html', user=cu(), edit_user=edit_user)
         
         # Check if username or email already exists (excluding current user)
@@ -971,7 +1035,7 @@ def delete_user(uid):
 @app.route('/admin/monitoring')
 @role_required('admin')
 def admin_monitoring():
-    from monitoring_system import get_system_performance, check_system_drift, generate_drift_alert, export_monitoring_report
+    from src.services.monitoring_system import get_system_performance, check_system_drift, generate_drift_alert, export_monitoring_report
     
     # Get current metrics
     performance_metrics = get_system_performance()
@@ -986,7 +1050,7 @@ def admin_monitoring():
 @app.route('/admin/monitoring/export')
 @role_required('admin')
 def admin_monitoring_export():
-    from monitoring_system import export_monitoring_report
+    from src.services.monitoring_system import export_monitoring_report
     
     filename = export_monitoring_report()
     if filename:

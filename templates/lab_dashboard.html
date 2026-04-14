@@ -14,7 +14,7 @@
       <td class="text-muted fs-13">{{ r.doctor_name or '—' }}</td>
       <td><span class="badge {{ 'badge-urgent' if r.priority=='urgent' else 'badge-normal' }}">{{ r.priority }}</span></td>
       <td class="text-dim fs-13">{{ r.created_at[:16] }}</td>
-      <td><a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-flask"></i> Upload Results →</a></td>
+      <td><a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-flask"></i> Upload Results</a></td>
     </tr>
     {% endfor %}
     </tbody>
