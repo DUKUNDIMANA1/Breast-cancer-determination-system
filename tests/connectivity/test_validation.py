@@ -1,7 +1,6 @@
 import numpy as np
 import cv2
 from image_processor import extract_features
-from image_validator import validate_medical_image
 
 # Create a simple test image
 test_img = np.zeros((200, 200, 3), dtype=np.uint8)

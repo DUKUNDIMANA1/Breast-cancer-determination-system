@@ -18,10 +18,6 @@
       <div><div class="info-label">Patient ID</div><div class="info-value"><code>{{ req.patient_id }}</code></div></div>
       <div><div class="info-label">Test Type</div><div class="info-value">{{ req.request_type }}</div></div>
       <div><div class="info-label">Priority</div><div class="info-value"><span class="badge {{ 'badge-urgent' if req.priority=='urgent' else 'badge-normal' }}">{{ req.priority }}</span></div></div>
-      {% if req.clinical_notes %}
-      <div class="grid-full"><div class="info-label">Doctor's Clinical Notes</div>
-        <div class="info-value clinical-notes">{{ req.clinical_notes }}</div>
-      </div>{% endif %}
     </div>
   </div>
 </div>
@@ -32,73 +28,167 @@
     <h3 class="card-title"><i class="fa-solid fa-image"></i> Option A — Extract Features from Image (Recommended)</h3>
   </div>
   <div class="card-body">
-    {% if img_loaded %}
-    <div class="alert alert-success mb-md"><i class="fa-solid fa-check"></i> Features auto-extracted from image - review values below and submit.</div>{% endif %}
-    <form method="POST" action="{{ url_for('lab_image_extract') }}" enctype="multipart/form-data">
-      <input type="hidden" name="request_id" value="{{ req.id }}"/>
-      <div class="upload-zone" id="uz">
-        <input type="file" name="image" accept="image/*" onchange="previewImg(event)" required/>
-        <div class="upload-icon"><i class="fa-solid fa-microscope"></i></div>
-        <div class="upload-text">Drop tissue image or click to browse</div>
-        <div class="fs-sm text-dim mt-md">JPG, PNG — histology / FNA slide images</div>
-      </div>
-      <div id="prev-wrap" class="preview-hidden">
-        <img id="prev-img" src="" class="preview-img"/>
-      </div>
-      <button type="submit" class="btn btn-success mt-lg"><i class="fa-solid fa-cogs"></i> Extract Features from Image</button>
-    </form>
+    <div class="upload-zone" id="uz">
+      <input type="file" id="img-input" accept="image/*" onchange="handleImageSelect(event)"/>
+      <div class="upload-icon"><i class="fa-solid fa-microscope"></i></div>
+      <div class="upload-text">Drop tissue image or click to browse</div>
+      <div class="fs-sm text-dim mt-md">JPG, PNG — histology / FNA slide images</div>
+    </div>
+    <div id="prev-wrap" style="display:none;margin-top:12px;">
+      <img id="prev-img" src="" style="max-height:200px;border-radius:8px;border:1px solid var(--border-primary);"/>
+    </div>
+    <div id="extract-status" class="mt-md" style="display:none;"></div>
+    <button type="button" id="extract-btn" class="btn btn-success mt-lg" onclick="extractFeatures()" disabled>
+      <i class="fa-solid fa-cogs"></i> Extract Features from Image
+    </button>
   </div>
 </div>
 
 <!-- Manual + submit -->
-<form method="POST" action="{{ url_for('upload_results',request_id=req.id) }}" enctype="multipart/form-data">
+<form method="POST" action="{{ url_for('upload_results',request_id=req.id) }}" enctype="multipart/form-data" id="submit-form">
   <div class="card mb-lg">
     <div class="card-header">
-      <h3 class="card-title"><i class="fa-solid fa-sliders"></i> Option B — Enter Feature Values Manually</h3>
+      <h3 class="card-title"><i class="fa-solid fa-sliders"></i> Feature Values (30)</h3>
     </div>
     <div class="card-body">
-      {% if img_loaded %}<div class="alert alert-info mb-md">Values pre-filled from image analysis. Review and adjust if needed.</div>{% endif %}
-      <div class="section-label" style="border:none;padding-top:0">Mean Features</div>
+      <div id="fill-banner" class="alert alert-success mb-md" style="display:none;">
+        <i class="fa-solid fa-check-circle"></i> <span id="fill-msg">Features filled from image.</span>
+      </div>
+
+      <div class="sec-label" style="border:none;padding-top:0">Mean Features</div>
       <div class="feat-grid mb-md">
-        {% for f in ['radius_mean','texture_mean','smoothness_mean','compactness_mean','concavity_mean','symmetry_mean','fractal_dimension_mean'] %}
+        {% for f in ['radius_mean','texture_mean','perimeter_mean','area_mean','smoothness_mean','compactness_mean','concavity_mean','concave points_mean','symmetry_mean','fractal_dimension_mean'] %}
         <div class="feat-g"><label class="form-label">{{ f }}</label>
-          <input class="form-control" type="number" name="{{ f }}" step="any" value="{{ '%.6f'|format(feat_values.get(f,feature_defaults.get(f,0))) }}" required/></div>
+          <input class="form-control feat-input" type="number" name="{{ f }}" step="any"
+                 value="{{ '%.6f'|format(feat_values.get(f, feature_defaults.get(f, 0))) }}" required/></div>
         {% endfor %}
       </div>
-      <div class="section-label" style="border:none">Standard Error Features</div>
+
+      <div class="sec-label" style="border:none">Standard Error Features</div>
       <div class="feat-grid mb-md">
-        {% for f in ['radius_se','texture_se','smoothness_se','compactness_se','concavity_se','concave points_se','symmetry_se','fractal_dimension_se'] %}
+        {% for f in ['radius_se','texture_se','perimeter_se','area_se','smoothness_se','compactness_se','concavity_se','concave points_se','symmetry_se','fractal_dimension_se'] %}
         <div class="feat-g"><label class="form-label">{{ f }}</label>
-          <input class="form-control" type="number" name="{{ f }}" step="any" value="{{ '%.6f'|format(feat_values.get(f,feature_defaults.get(f,0))) }}" required/></div>
+          <input class="form-control feat-input" type="number" name="{{ f }}" step="any"
+                 value="{{ '%.6f'|format(feat_values.get(f, feature_defaults.get(f, 0))) }}" required/></div>
         {% endfor %}
       </div>
-      <div class="section-label" style="border:none">Worst Features</div>
+
+      <div class="sec-label" style="border:none">Worst Features</div>
       <div class="feat-grid">
-        {% for f in ['smoothness_worst','compactness_worst','concavity_worst','symmetry_worst','fractal_dimension_worst'] %}
+        {% for f in ['radius_worst','texture_worst','perimeter_worst','area_worst','smoothness_worst','compactness_worst','concavity_worst','concave points_worst','symmetry_worst','fractal_dimension_worst'] %}
         <div class="feat-g"><label class="form-label">{{ f }}</label>
-          <input class="form-control" type="number" name="{{ f }}" step="any" value="{{ '%.6f'|format(feat_values.get(f,feature_defaults.get(f,0))) }}" required/></div>
+          <input class="form-control feat-input" type="number" name="{{ f }}" step="any"
+                 value="{{ '%.6f'|format(feat_values.get(f, feature_defaults.get(f, 0))) }}" required/></div>
         {% endfor %}
       </div>
     </div>
   </div>
+
+  <!-- Hidden file input so image is saved with the submission -->
+  <input type="file" name="image" id="hidden-img-input" style="display:none;" accept="image/*"/>
+
   <div class="card mb-lg">
     <div class="card-header">
       <h3 class="card-title"><i class="fa-solid fa-note-sticky"></i> Lab Notes</h3>
     </div>
     <div class="card-body">
-      <textarea class="form-control" name="lab_notes" rows="3" placeholder="Sample quality, processing notes, observations…"></textarea>
+      <textarea class="form-control" name="lab_notes" rows="3"
+                placeholder="Sample quality, processing notes, observations…"></textarea>
     </div>
   </div>
   <div class="d-flex gap-md">
-      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check-circle"></i> Submit Results and Notify Doctor</button>
+    <button type="submit" class="btn btn-primary">
+      <i class="fa-solid fa-check-circle"></i> Submit Results and Notify Doctor
+    </button>
     <a href="{{ url_for('lab_dashboard') }}" class="btn btn-secondary">Cancel</a>
   </div>
 </form>
-{% block scripts %}<script>
-function previewImg(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();
-r.onload=ev=>{document.getElementById('prev-img').src=ev.target.result;document.getElementById('prev-wrap').style.display='block';};r.readAsDataURL(f);}
-const uz=document.getElementById('uz');
-uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag');});
-uz.addEventListener('dragleave',()=>uz.classList.remove('drag'));
-</script>{% endblock %}
+
+{% block scripts %}
+<style>
+.feat-filled {
+  border-color: var(--success) !important;
+  box-shadow: 0 0 0 2px rgba(0,229,176,0.2) !important;
+}
+</style>
+<script>
+let selectedFile = null;
+
+function handleImageSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  selectedFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('prev-img').src = ev.target.result;
+    document.getElementById('prev-wrap').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+  document.getElementById('extract-btn').disabled = false;
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  document.getElementById('hidden-img-input').files = dt.files;
+}
+
+function extractFeatures() {
+  if (!selectedFile) return;
+  const btn = document.getElementById('extract-btn');
+  const status = document.getElementById('extract-status');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Extracting…';
+  status.style.display = 'block';
+  status.innerHTML = '<div class="alert alert-info"><i class="fa-solid fa-spinner fa-spin"></i> Analysing image, please wait…</div>';
+
+  const fd = new FormData();
+  fd.append('image', selectedFile);
+
+  fetch('/api/extract-features', { method: 'POST', body: fd })
+    .then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error('Server error ' + r.status + ': ' + t.substring(0,120)); });
+      return r.json();
+    })
+    .then(data => {
+      if (data.error) {
+        status.innerHTML = '<div class="alert alert-danger"><i class="fa-solid fa-xmark"></i> ' + data.error + '</div>';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-cogs"></i> Extract Features from Image';
+        return;
+      }
+      let filled = 0;
+      Object.entries(data.features).forEach(([key, val]) => {
+        const el = document.querySelector('input[name="' + key + '"]');
+        if (el) { el.value = val.toFixed(6); el.classList.add('feat-filled'); filled++; }
+      });
+      const banner = document.getElementById('fill-banner');
+      const msg = document.getElementById('fill-msg');
+      banner.style.display = 'block';
+      banner.className = data.warning ? 'alert alert-warning mb-md' : 'alert alert-success mb-md';
+      msg.textContent = data.warning
+        ? '⚠️ Image may not be a standard FNA slide — ' + filled + ' values filled. Review carefully.'
+        : '✅ ' + filled + ' feature values extracted and filled from image. Review and adjust if needed.';
+      status.innerHTML = '';
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Extracted';
+      btn.className = 'btn btn-outline mt-lg';
+      document.querySelector('.feat-grid').scrollIntoView({behavior:'smooth', block:'start'});
+    })
+    .catch(err => {
+      status.innerHTML = '<div class="alert alert-danger"><i class="fa-solid fa-xmark"></i> Request failed: ' + err + '</div>';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-cogs"></i> Extract Features from Image';
+    });
+}
+
+const uz = document.getElementById('uz');
+uz.addEventListener('dragover', e => { e.preventDefault(); uz.classList.add('drag'); });
+uz.addEventListener('dragleave', () => uz.classList.remove('drag'));
+uz.addEventListener('drop', e => {
+  e.preventDefault(); uz.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    document.getElementById('img-input').files = e.dataTransfer.files;
+    handleImageSelect({ target: { files: [file] } });
+  }
+});
+</script>
+{% endblock %}
 {% endblock %}

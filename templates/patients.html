@@ -13,8 +13,8 @@
 </div>
 <div class="card">
   {% if patients %}
-  <div class="table-wrap"><table class="patients-table">
-    <thead><tr><th>Patient ID</th><th>Name</th><th>Gender</th><th>DOB</th><th>Contact</th><th>Registered By</th><th>Date</th><th class="actions-head">Actions</th></tr></thead>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Patient ID</th><th>Name</th><th>Gender</th><th>DOB</th><th>Contact</th><th>Registered By</th><th>Date</th><th>Actions</th></tr></thead>
     <tbody>
     {% for p in patients %}
     <tr>
@@ -25,14 +25,14 @@
       <td class="td-mono fs-13">{{ p.contact or '—' }}</td>
       <td class="text-muted fs-13">{{ p.reg_by_name or '—' }}</td>
       <td class="text-dim fs-13">{{ p.created_at[:10] }}</td>
-      <td class="actions-cell">
+      <td>
         <div class="btn-group">
           <a href="{{ url_for('patient_detail',patient_id=p.patient_id) }}" class="btn btn-outline btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a>
           {% if session.role in ('receptionist','admin') %}
           <a href="{{ url_for('edit_patient',patient_id=p.patient_id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-pen"></i></a>{% endif %}
           {% if session.role in ('doctor','admin') %}
           <a href="{{ url_for('new_request') }}?patient_id={{ p.patient_id }}" class="btn btn-success btn-sm btn-icon" title="New lab request"><i class="fa-solid fa-microscope"></i></a>{% endif %}
-          {% if session.role == 'admin' %}
+          {% if session.role in ('admin','data_manager') %}
           <a href="{{ url_for('export_pdf_single',patient_id=p.patient_id) }}" class="btn btn-warn btn-sm btn-icon" title="PDF"><i class="fa-solid fa-file-pdf"></i></a>{% endif %}
         </div>
       </td>

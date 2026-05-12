@@ -13,7 +13,7 @@
 <div class="card">
   {% if predictions %}
   <div class="table-wrap"><table>
-    <thead><tr><th>Patient ID</th><th>Name</th><th>Gender</th><th>Result</th><th>Confidence</th>{% if is_admin %}<th>Doctor</th>{% endif %}<th>Date</th><th class="table-actions-head">Actions</th></tr></thead>
+    <thead><tr><th>Patient ID</th><th>Name</th><th>Gender</th><th>Result</th><th>Stage</th>{% if is_admin %}<th>Doctor</th>{% endif %}<th>Date</th><th>Actions</th></tr></thead>
     <tbody>
     {% for p in predictions %}
     <tr>
@@ -21,13 +21,13 @@
       <td class="fw-700">{{ p.full_name }}</td>
       <td class="text-muted fs-13">{{ p.gender or '—' }}</td>
       <td><span class="badge {{ 'badge-mal' if p.result==1 else 'badge-ben' }}">{{ 'Malignant' if p.result==1 else 'Benign' }}</span></td>
-      <td class="td-mono">{{ "%.1f"|format(p.confidence) }}%</td>
+      <td>{{ (p.stage or 'Unknown') if p.result==1 else 'Benign' }}</td>
       {% if is_admin %}<td class="text-muted fs-13">{{ p.doctor_name or '—' }}</td>{% endif %}
       <td class="text-dim fs-13">{{ p.created_at[:16] }}</td>
-      <td class="table-actions-cell">
+      <td>
         <div class="btn-group">
           <a href="{{ url_for('prediction_detail',pred_id=p.id) }}" class="btn btn-outline btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a>
-          {% if session.role=='admin' %}
+          {% if session.role in ('admin','data_manager') %}
           <a href="{{ url_for('export_pdf_single',patient_id=p.patient_id) }}" class="btn btn-warn btn-sm btn-icon" title="PDF"><i class="fa-solid fa-file-pdf"></i></a>{% endif %}
           <form method="POST" action="{{ url_for('delete_prediction',pred_id=p.id) }}"
             onsubmit="return confirm('Delete this prediction?')" style="display:inline">
@@ -41,7 +41,7 @@
   </table></div>
   {% else %}<div class="empty"><div class="ei"><i class="fa-solid fa-microscope"></i></div><p>No predictions found{% if q %} for "{{ q }}"{% endif %}.</p></div>{% endif %}
 </div>
-{% if session.role=='admin' and predictions %}
+{% if session.role in ('admin','data_manager') and predictions %}
 <div class="mt-16" style="text-align:right">
   <a href="{{ url_for('export_pdf_all') }}" class="btn btn-warn"><i class="fa-solid fa-file-export"></i> Export All as PDF</a>
 </div>{% endif %}

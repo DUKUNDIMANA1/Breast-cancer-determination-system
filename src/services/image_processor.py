@@ -8,7 +8,6 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
-from image_validator import validate_medical_image
 
 # Feature extraction constants
 FEATURE_NAMES = [
@@ -75,17 +74,23 @@ def extract_features(image_bytes):
         area = cv2.contourArea(largest_contour)
         perimeter = cv2.arcLength(largest_contour, True)
         
-        if perimeter > 0:
+        if perimeter > 0 and area > 0:
             # Radius (equivalent radius of the area)
-            features['radius_mean'] = np.sqrt(area / np.pi) * 2  # Scale to match dataset
+            radius = np.sqrt(area / np.pi) * 2  # Scale to match dataset
+            features['radius_mean'] = float(radius) if not np.isnan(radius) else DEFAULT_FEATURES['radius_mean']
             
             # Compactness (perimeter^2 / (4π * area))
-            features['compactness_mean'] = (perimeter ** 2) / (4 * np.pi * area) if area > 0 else 0
+            compactness = (perimeter ** 2) / (4 * np.pi * area)
+            features['compactness_mean'] = float(compactness) if not np.isnan(compactness) else DEFAULT_FEATURES['compactness_mean']
             
             # Concavity (based on contour convexity defects)
             hull = cv2.convexHull(largest_contour)
             hull_area = cv2.contourArea(hull)
-            features['concavity_mean'] = (hull_area - area) / hull_area if hull_area > 0 else 0
+            if hull_area > 0:
+                concavity = (hull_area - area) / hull_area
+                features['concavity_mean'] = float(concavity) if not np.isnan(concavity) else DEFAULT_FEATURES['concavity_mean']
+            else:
+                features['concavity_mean'] = DEFAULT_FEATURES['concavity_mean']
             
         else:
             # Default values if no valid perimeter
@@ -94,8 +99,12 @@ def extract_features(image_bytes):
             features['concavity_mean'] = DEFAULT_FEATURES['concavity_mean']
         
         # Texture features (using grayscale image statistics)
-        features['texture_mean'] = np.mean(gray)
-        features['smoothness_mean'] = np.std(gray) / 255.0  # Normalized
+        texture_mean = np.mean(gray)
+        features['texture_mean'] = float(texture_mean) if not np.isnan(texture_mean) else DEFAULT_FEATURES['texture_mean']
+        
+        smoothness = np.std(gray) / 255.0  # Normalized
+        features['smoothness_mean'] = float(smoothness) if not np.isnan(smoothness) else DEFAULT_FEATURES['smoothness_mean']
+        
         features['symmetry_mean'] = calculate_symmetry(gray)
         features['fractal_dimension_mean'] = calculate_fractal_dimension(gray)
         
@@ -115,19 +124,8 @@ def extract_features(image_bytes):
             if feature_name not in features:
                 features[feature_name] = DEFAULT_FEATURES[feature_name]
         
-        # Run validation pipeline before returning features
-        validation_result = validate_medical_image(image_bytes, features)
-        
-        if not validation_result['is_valid']:
-            print(f"[Image Processor] Validation failed: {validation_result['rejection_reasons']}")
-            # Return features but mark as invalid for system to handle
-            features['validation_failed'] = True
-            features['validation_reasons'] = validation_result['rejection_reasons']
-            features['validation_confidence'] = validation_result['confidence']
-        else:
-            print(f"[Image Processor] Validation passed with confidence: {validation_result['confidence']:.2f}")
-            features['validation_passed'] = True
-            features['validation_confidence'] = validation_result['confidence']
+        # Validation module removed - features returned without validation
+        print(f"[Image Processor] Features extracted successfully")
         
         return features
         
@@ -140,47 +138,88 @@ def extract_features(image_bytes):
         return error_features
 
 def calculate_symmetry(gray_image):
-    """Calculate symmetry measure of grayscale image."""
-    h, w = gray_image.shape
-    left_half = gray_image[:, :w//2]
-    right_half = cv2.flip(gray_image[:, w//2:], 1)
-    
-    # Resize to match if dimensions don't align
-    min_width = min(left_half.shape[1], right_half.shape[1])
-    left_half = left_half[:, :min_width]
-    right_half = right_half[:, :min_width]
-    
-    # Calculate difference
-    diff = cv2.absdiff(left_half, right_half)
-    symmetry_score = 1.0 - (np.mean(diff) / 255.0)
-    
-    return max(0.0, min(1.0, symmetry_score))
+    """Calculate symmetry measure of grayscale image with NaN protection."""
+    try:
+        h, w = gray_image.shape
+        if w < 2:  # Image too narrow for symmetry calculation
+            return 0.5
+            
+        left_half = gray_image[:, :w//2]
+        right_half = cv2.flip(gray_image[:, w//2:], 1)
+        
+        # Resize to match if dimensions don't align
+        min_width = min(left_half.shape[1], right_half.shape[1])
+        if min_width == 0:
+            return 0.5
+            
+        left_half = left_half[:, :min_width]
+        right_half = right_half[:, :min_width]
+        
+        # Calculate difference
+        diff = cv2.absdiff(left_half, right_half)
+        mean_diff = np.mean(diff)
+        
+        # Check for NaN
+        if np.isnan(mean_diff):
+            return 0.5
+            
+        symmetry_score = 1.0 - (mean_diff / 255.0)
+        
+        # Ensure valid result
+        if np.isnan(symmetry_score) or np.isinf(symmetry_score):
+            return 0.5
+        
+        return max(0.0, min(1.0, float(symmetry_score)))
+    except Exception as e:
+        print(f"[Symmetry] Error: {e}")
+        return 0.5
 
 def calculate_fractal_dimension(gray_image):
-    """Calculate simplified fractal dimension."""
-    # Simplified box-counting method
-    sizes = [2, 4, 8, 16]
-    counts = []
-    
-    for size in sizes:
-        h, w = gray_image.shape
-        h_box, w_box = h // size, w // size
+    """Calculate simplified fractal dimension with NaN protection."""
+    try:
+        # Simplified box-counting method
+        sizes = [2, 4, 8, 16]
+        counts = []
         
-        # Count non-empty boxes
-        boxes = 0
-        for i in range(0, h_box):
-            for j in range(0, w_box):
-                box = gray_image[i*size:(i+1)*size, j*size:(j+1)*size]
-                if np.any(box > 0):
-                    boxes += 1
-        counts.append(boxes)
-    
-    # Calculate fractal dimension
-    if len(counts) > 1 and counts[0] > 0:
-        coeffs = np.polyfit(np.log(sizes), np.log(counts), 1)
-        return -coeffs[0]  # Negative slope is fractal dimension
-    
-    return DEFAULT_FEATURES['fractal_dimension_mean']
+        for size in sizes:
+            h, w = gray_image.shape
+            h_box, w_box = h // size, w // size
+            
+            # Count non-empty boxes
+            boxes = 0
+            for i in range(0, h_box):
+                for j in range(0, w_box):
+                    box = gray_image[i*size:(i+1)*size, j*size:(j+1)*size]
+                    if np.any(box > 0):
+                        boxes += 1
+            counts.append(boxes)
+        
+        # Calculate fractal dimension with NaN protection
+        if len(counts) > 1 and counts[0] > 0:
+            try:
+                log_sizes = np.log(sizes[:len(counts)])
+                log_counts = np.log(counts)
+                
+                # Check for valid values before polyfit
+                if np.any(np.isnan(log_sizes)) or np.any(np.isnan(log_counts)):
+                    return DEFAULT_FEATURES['fractal_dimension_mean']
+                
+                coeffs = np.polyfit(log_sizes, log_counts, 1)
+                fd = -coeffs[0]
+                
+                # Check if result is valid
+                if np.isnan(fd) or np.isinf(fd):
+                    return DEFAULT_FEATURES['fractal_dimension_mean']
+                
+                return float(fd)
+            except Exception as e:
+                print(f"[Fractal Dimension] Calculation error: {e}")
+                return DEFAULT_FEATURES['fractal_dimension_mean']
+        
+        return DEFAULT_FEATURES['fractal_dimension_mean']
+    except Exception as e:
+        print(f"[Fractal Dimension] Error: {e}")
+        return DEFAULT_FEATURES['fractal_dimension_mean']
 
 def generate_annotated_image(image_bytes):
     """

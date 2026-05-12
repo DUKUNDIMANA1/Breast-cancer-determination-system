@@ -3,49 +3,33 @@
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>{% block title %}BreastCare AI{% endblock %}</title>
-<script>
-  (function () {
-    const savedTheme = localStorage.getItem('themePreference') || 'system';
-    const effectiveTheme = savedTheme === 'system'
-      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-      : savedTheme;
-    document.documentElement.setAttribute('data-theme', effectiveTheme);
-    document.documentElement.style.colorScheme = effectiveTheme;
-  })();
-</script>
 <!-- Google Fonts -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/css/intlTelInput.css"/>
 <!-- Consistent Design System -->
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 {% block extra_head %}{% endblock %}
 </head>
 <body>
-<div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 <div class="layout">
 {% if session.user_id %}
 <nav class="topbar">
-  <button id="mobile-menu-btn" class="mobile-menu-btn" type="button" aria-label="Toggle navigation">
-    <i class="fa-solid fa-bars"></i>
-  </button>
-  <div class="topbar-logo"><i class="fa-solid fa-heart-pulse"></i>BreastCare <span style="color:var(--accent-tertiary)">AI</span><div class="logo-dot"></div></div>
-  <div class="topbar-spacer"></div>
+  <div class="topbar-left">
+    <button id="menu-toggle" class="btn btn-icon btn-secondary" title="Toggle menu">
+      <i class="fa-solid fa-bars"></i>
+    </button>
+    <div class="topbar-logo"><i class="fa-solid fa-heart-pulse"></i>BreastCare <span style="color:var(--accent3)">AI</span><div class="logo-dot"></div></div>
+  </div>
   <div class="topbar-right">
-    <label class="theme-switch" for="theme-select" title="Theme">
-      <i class="fa-solid fa-circle-half-stroke"></i>
-      <select id="theme-select" aria-label="Select theme">
-        <option value="system">System</option>
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
-      </select>
-    </label>
     {% set uc = unread_count() %}
     <a href="{{ url_for('notifications') }}" class="notif-btn" title="Notifications">
       <i class="fa-solid fa-bell"></i>{% if uc > 0 %}<span class="notif-badge">{{ uc }}</span>{% endif %}
     </a>
-    <span class="role-pill role-{{ session.role }}">{{ session.role }}</span>
+    <button id="theme-toggle" class="btn btn-icon btn-secondary" title="Toggle theme">
+      <i class="fa-solid fa-moon" id="theme-icon"></i>
+    </button>
+    <span class="role-pill rp-{{ session.role }}">{{ session.role }}</span>
     <div class="user-chip">
       <div class="av">{{ session.full_name[0].upper() }}</div>
       <div>
@@ -56,8 +40,8 @@
     <a href="{{ url_for('signout') }}" class="btn btn-secondary btn-sm"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</a>
   </div>
 </nav>
-<div id="mobile-nav-overlay" class="mobile-nav-overlay"></div>
 <div class="main-wrap">
+  <div id="mobile-nav-overlay" class="mobile-nav-overlay" onclick="closeSidebar()"></div>
   <aside class="sidebar">
     <div class="nav-sec">Main</div>
     <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint=='dashboard' %}active{% endif %}">
@@ -86,6 +70,14 @@
       <span class="ni"><i class="fa-solid fa-flask"></i></span><span class="nav-text">Lab Queue</span></a>
     {% endif %}
 
+    {% if session.role in ('data_manager','admin') %}
+    <div class="nav-sec">Data Management</div>
+    <a href="{{ url_for('all_predictions') }}" class="nav-item {% if request.endpoint=='all_predictions' %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-chart-pie"></i></span><span class="nav-text">Patient Reports</span></a>
+    <a href="{{ url_for('patients') }}" class="nav-item {% if 'patient' in (request.endpoint or '') %}active{% endif %}">
+      <span class="ni"><i class="fa-solid fa-users"></i></span><span class="nav-text">Patient Registry</span></a>
+    {% endif %}
+
     {% if session.role == 'admin' %}
     <div class="nav-sec">Admin</div>
     <a href="{{ url_for('all_predictions') }}" class="nav-item {% if request.endpoint=='all_predictions' %}active{% endif %}">
@@ -94,6 +86,7 @@
       <span class="ni"><i class="fa-solid fa-user-gear"></i></span><span class="nav-text">Manage Users</span></a>
     <a href="{{ url_for('admin_monitoring') }}" class="nav-item {% if request.endpoint=='admin_monitoring' %}active{% endif %}">
       <span class="ni"><i class="fa-solid fa-chart-line"></i></span><span class="nav-text">System Monitoring</span></a>
+    <!-- Email Settings link removed as the route does not exist -->
     <a href="{{ url_for('export_pdf_all') }}" class="nav-item" target="_blank">
       <span class="ni"><i class="fa-solid fa-file-export"></i></span><span class="nav-text">Export All PDF</span></a>
     {% endif %}
@@ -101,13 +94,17 @@
     <div class="sidebar-footer">
       <span class="nav-text">
         Model: <b style="color:var(--success)">LR</b><br>
-        Accuracy: <span style="color:var(--success);font-family:'JetBrains Mono',monospace;font-weight:700">97.37%</span>
+        Accuracy: <span style="color:var(--success);font-family:'JetBrains Mono',monospace;font-weight:700">98.25%</span>
       </span>
     </div>
   </aside>
   <main class="page-area fade-in">
     {% with msgs=get_flashed_messages(with_categories=true) %}
-      <script id="flash-data" type="application/json">{{ msgs|tojson }}</script>
+      {% for cat,msg in msgs %}
+        <div class="alert alert-{{ cat }}">
+          <span>{% if cat=='success' %}<i class="fa-solid fa-check"></i>{% elif cat=='danger' %}<i class="fa-solid fa-xmark"></i>{% elif cat=='warning' %}<i class="fa-solid fa-triangle-exclamation"></i>{% else %}<i class="fa-solid fa-circle-info"></i>{% endif %}</span>{{ msg }}
+        </div>
+      {% endfor %}
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
@@ -116,169 +113,96 @@
 <main style="flex:1;min-height:100vh;">{% block auth_content %}{% endblock %}</main>
 {% endif %}
 </div>
-<script src="https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/js/intlTelInput.min.js"></script>
-<script>
-  (function () {
-    const themeSelect = document.getElementById('theme-select');
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-
-    function resolveTheme(preference) {
-      if (preference === 'system') {
-        return mq.matches ? 'dark' : 'light';
-      }
-      return preference;
-    }
-
-    function applyTheme(preference) {
-      const effective = resolveTheme(preference);
-      document.documentElement.setAttribute('data-theme', effective);
-      document.documentElement.style.colorScheme = effective;
-    }
-
-    if (themeSelect) {
-      const stored = localStorage.getItem('themePreference') || 'system';
-      themeSelect.value = stored;
-      applyTheme(stored);
-      themeSelect.addEventListener('change', function (event) {
-        const preference = event.target.value;
-        localStorage.setItem('themePreference', preference);
-        applyTheme(preference);
-      });
-      mq.addEventListener('change', function () {
-        const preference = localStorage.getItem('themePreference') || 'system';
-        if (preference === 'system') {
-          applyTheme(preference);
-        }
-      });
-    }
-
-    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-    const sidebar = document.querySelector('.sidebar');
-    const overlay = document.getElementById('mobile-nav-overlay');
-
-    function closeMobileNav() {
-      if (!sidebar || !overlay) return;
-      sidebar.classList.remove('open');
-      overlay.classList.remove('open');
-    }
-
-    if (mobileMenuBtn && sidebar && overlay) {
-      mobileMenuBtn.addEventListener('click', function () {
-        sidebar.classList.toggle('open');
-        overlay.classList.toggle('open');
-      });
-      overlay.addEventListener('click', closeMobileNav);
-      window.addEventListener('resize', function () {
-        if (window.innerWidth > 640) {
-          closeMobileNav();
-        }
-      });
-    }
-
-    if (window.intlTelInput) {
-      const phoneInputs = document.querySelectorAll('input[data-phone-input]');
-      phoneInputs.forEach(function (input) {
-        if (input.dataset.phoneReady === '1') return;
-        const iti = window.intlTelInput(input, {
-          initialCountry: 'rw',
-          separateDialCode: true,
-          strictMode: true,
-          nationalMode: false,
-          autoPlaceholder: 'polite',
-          utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/js/utils.js'
-        });
-
-        if (input.value) {
-          iti.setNumber(input.value);
-        }
-
-        const setValidationState = function () {
-          const raw = input.value.trim();
-          if (!raw) {
-            input.setCustomValidity('');
-            return;
-          }
-          const fullNumber = iti.getNumber();
-          const digits = (fullNumber.match(/\d/g) || []).length;
-          if (digits < 10 || !iti.isValidNumber()) {
-            input.setCustomValidity('Enter a valid phone number with country code (minimum 10 digits).');
-          } else {
-            input.setCustomValidity('');
-            input.value = fullNumber;
-          }
-        };
-
-        input.addEventListener('blur', setValidationState);
-        input.addEventListener('input', function () {
-          input.setCustomValidity('');
-        });
-
-        const form = input.closest('form');
-        if (form) {
-          form.addEventListener('submit', function () {
-            setValidationState();
-            if (!input.validationMessage) {
-              input.value = iti.getNumber();
-            }
-          });
-        }
-
-        input.dataset.phoneReady = '1';
-      });
-    }
-
-    const flashNode = document.getElementById('flash-data');
-    const toastRoot = document.getElementById('toast-root');
-    if (!flashNode || !toastRoot) return;
-
-    let flashes = [];
-    try {
-      flashes = JSON.parse(flashNode.textContent || '[]');
-    } catch (e) {
-      flashes = [];
-    }
-
-    const categoryMap = {
-      success: { icon: 'fa-check', className: 'toast-success' },
-      danger: { icon: 'fa-xmark', className: 'toast-danger' },
-      error: { icon: 'fa-xmark', className: 'toast-danger' },
-      warning: { icon: 'fa-triangle-exclamation', className: 'toast-warning' },
-      info: { icon: 'fa-circle-info', className: 'toast-info' }
-    };
-
-    function pushToast(category, message) {
-      const safeCategory = categoryMap[category] ? category : 'info';
-      const meta = categoryMap[safeCategory];
-      const toast = document.createElement('div');
-      toast.className = 'toast ' + meta.className;
-      toast.innerHTML =
-        '<i class="fa-solid ' + meta.icon + '"></i>' +
-        '<div class="toast-message"></div>' +
-        '<button class="toast-close" type="button" aria-label="Dismiss notification"><i class="fa-solid fa-xmark"></i></button>';
-      toast.querySelector('.toast-message').textContent = message;
-
-      const closeButton = toast.querySelector('.toast-close');
-      const removeToast = function () {
-        toast.classList.add('toast-hide');
-        setTimeout(function () {
-          if (toast.parentNode) {
-            toast.parentNode.removeChild(toast);
-          }
-        }, 180);
-      };
-
-      closeButton.addEventListener('click', removeToast);
-      toastRoot.appendChild(toast);
-      setTimeout(removeToast, 5000);
-    }
-
-    flashes.forEach(function (entry) {
-      if (Array.isArray(entry) && entry.length >= 2) {
-        pushToast(entry[0], entry[1]);
-      }
-    });
-  })();
-</script>
 {% block scripts %}{% endblock %}
+
+<script>
+// Theme toggle functionality
+const themeToggle = document.getElementById('theme-toggle');
+const themeIcon = document.getElementById('theme-icon');
+const html = document.documentElement;
+
+// Check for saved theme preference or default to light mode
+const currentTheme = localStorage.getItem('theme') || 'light';
+html.setAttribute('data-theme', currentTheme);
+updateThemeIcon(currentTheme);
+
+// Toggle theme function
+themeToggle.addEventListener('click', () => {
+  const newTheme = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', newTheme);
+  localStorage.setItem('theme', newTheme);
+  updateThemeIcon(newTheme);
+});
+
+// Update theme icon based on current theme
+function updateThemeIcon(theme) {
+  if (theme === 'dark') {
+    themeIcon.classList.remove('fa-moon');
+    themeIcon.classList.add('fa-sun');
+  } else {
+    themeIcon.classList.remove('fa-sun');
+    themeIcon.classList.add('fa-moon');
+  }
+}
+
+// Listen for system theme changes
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+  if (!localStorage.getItem('theme')) {
+    const newTheme = e.matches ? 'dark' : 'light';
+    html.setAttribute('data-theme', newTheme);
+    updateThemeIcon(newTheme);
+  }
+});
+
+// Mobile menu toggle
+const menuToggle = document.getElementById('menu-toggle');
+const sidebar = document.querySelector('.sidebar');
+const overlay = document.getElementById('mobile-nav-overlay');
+
+function closeSidebar() {
+  sidebar.classList.remove('open');
+  if (overlay) overlay.classList.remove('open');
+  const menuIcon = menuToggle.querySelector('i');
+  menuIcon.classList.remove('fa-times');
+  menuIcon.classList.add('fa-bars');
+}
+
+// Toggle sidebar function
+menuToggle.addEventListener('click', () => {
+  const isOpen = sidebar.classList.toggle('open');
+  if (overlay) overlay.classList.toggle('open', isOpen);
+  
+  // Update menu icon
+  const menuIcon = menuToggle.querySelector('i');
+  if (isOpen) {
+    menuIcon.classList.remove('fa-bars');
+    menuIcon.classList.add('fa-times');
+  } else {
+    menuIcon.classList.remove('fa-times');
+    menuIcon.classList.add('fa-bars');
+  }
+});
+
+// Close sidebar when clicking outside
+document.addEventListener('click', (e) => {
+  if (window.innerWidth <= 640 && 
+      !sidebar.contains(e.target) && 
+      !menuToggle.contains(e.target) && 
+      sidebar.classList.contains('open')) {
+    closeSidebar();
+  }
+});
+
+// Handle window resize
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 640 && sidebar.classList.contains('open')) {
+    closeSidebar();
+  }
+});
+</script>
+<!-- Load npm packages before other scripts -->
+<script src="{{ url_for('static', filename='js/menu-toggle.js') }}"></script>
+<!-- Phone picker (custom, no CDN dependency) -->
+<script src="{{ url_for('static', filename='js/phone_picker.js') }}"></script>
 </body>
 </html>

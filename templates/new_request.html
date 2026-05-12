@@ -2,7 +2,7 @@
 <div class="page-header-row">
   <div><h1 class="page-header">New Lab Request</h1>
     <p class="text-muted fs-13 mt-8">Submit a diagnostic test request — the lab team will be notified immediately</p></div>
-  <a href="{{ url_for('lab_requests_list') }}" class="btn btn-outline btn-sm"><i class="fa-solid fa-arrow-left"></i> Back</a>
+  <a href="{{ url_for('lab_requests_list') }}" class="btn btn-outline btn-sm">← Back</a>
 </div>
 <div class="g2">
   <div class="card">
@@ -23,14 +23,7 @@
           {% for t in ['Biopsy — Fine Needle Aspirate (FNA)','Biopsy — Core Needle','Mammogram','Ultrasound','Histopathology','MRI Scan','CT Scan','Blood Markers','Other'] %}
           <option value="{{ t }}">{{ t }}</option>{% endfor %}
         </select></div>
-      <div class="form-group"><label>Priority</label>
-        <select class="form-control" name="priority">
-          <option value="normal">Normal</option>
-          <option value="urgent"><i class="fa-solid fa-triangle-exclamation"></i> Urgent</option>
-        </select></div>
-      <div class="form-group"><label>Clinical Notes <span class="opt">(optional)</span></label>
-        <textarea class="form-control" name="clinical_notes" rows="4" placeholder="Describe symptoms, history, reason for test…"></textarea></div>
-      <button type="submit" class="btn btn-primary btn-full"><i class="fa-solid fa-paper-plane"></i> Submit Request — Notify Lab</button>
+                  <button type="submit" class="btn btn-primary btn-full"><i class="fa-solid fa-paper-plane"></i> Submit Request — Notify Lab</button>
     </form>
   </div>
   <div class="card">
@@ -40,7 +33,7 @@
         <span class="step-number"><i class="fa-solid fa-1"></i></span>
         <div class="step-content">
           <b class="text-primary">Lab Notified</b><br>
-          The lab team receives an instant notification with your request details and priority level.
+          The lab team receives an instant notification with your request details.
         </div>
       </div>
       <div class="step-item">

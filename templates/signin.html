@@ -1,5 +1,5 @@
-{% extends "base.html" %}
-{% block title %}Sign In — BreastCare AI{% endblock %}
+﻿{% extends "base.html" %}
+{% block title %}Sign In â€” BreastCare AI{% endblock %}
 
 {% block auth_content %}
 <style>
@@ -159,6 +159,7 @@
   padding: var(--spacing-sm);
   border-top: 1px solid var(--border-light);
 }
+
 </style>
 
 <div class="auth-wrap">
@@ -188,6 +189,12 @@
         <label for="inp-password">Password</label>
         <input class="form-control" type="password" name="password" id="inp-password"
           placeholder="Enter your password" required/>
+        <div style="text-align:right;margin-top:6px;">
+          <a href="{{ url_for('forgot_password') }}"
+             style="font-size:var(--font-size-sm);color:var(--accent-primary);text-decoration:none;">
+            Forgot password?
+          </a>
+        </div>
       </div>
       <button type="submit" class="btn btn-primary btn-block">
         <i class="fa-solid fa-right-to-bracket"></i>
@@ -220,3 +227,4 @@ function fillLogin(username, password) {
 {% endblock %}
 
 {% endblock auth_content %}
+

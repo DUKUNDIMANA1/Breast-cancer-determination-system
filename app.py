@@ -1,4 +1,4 @@
-"""
+﻿"""
 BreastCare AI — MongoDB Atlas Edition
 Roles: Receptionist → Doctor → Lab Technician → Doctor → Admin
 Model: Logistic Regression | Accuracy: 97.37%
@@ -6,12 +6,12 @@ Database: MongoDB Atlas Cloud
 """
 
 from flask import (Flask, render_template, request, redirect,
-                   url_for, session, flash, send_file)
+                   url_for, session, flash, send_file, jsonify)
 from pymongo import MongoClient, DESCENDING
 from bson import ObjectId
 from bson.errors import InvalidId
 import hashlib, secrets, os, pickle, json
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from dotenv import load_dotenv
 import re
@@ -21,7 +21,7 @@ import phonenumbers
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH  = os.path.join(BASE_DIR, 'artifacts', 'model.pkl')
 SCALER_PATH = os.path.join(BASE_DIR, 'artifacts', 'scaler.pkl')
-CSV_PATH    = os.path.join(BASE_DIR, 'data', 'breast_cancer_cleaned.csv')
+CSV_PATH    = os.path.join(BASE_DIR, 'data', 'breast-cancer.csv')
 
 # Load environment variables from a single source of truth.
 load_dotenv(os.path.join(BASE_DIR, '.env'), override=False)
@@ -70,17 +70,21 @@ def connect_mongodb():
                 current_client = MongoClient(
                     uri,
                     serverSelectionTimeoutMS=5000,
-                    connectTimeoutMS=5000
+                    connectTimeoutMS=5000,
+                    socketTimeoutMS=5000,
+                    directConnection=True
                 )
             else:
-                # Keep Atlas defaults for TLS negotiation instead of forcing custom flags.
+                # Atlas / SRV — no directConnection, no socketKeepAlive (removed in newer PyMongo)
                 current_client = MongoClient(
                     uri,
-                    serverSelectionTimeoutMS=30000,
-                    connectTimeoutMS=20000,
-                    socketTimeoutMS=20000,
+                    serverSelectionTimeoutMS=15000,
+                    connectTimeoutMS=15000,
+                    socketTimeoutMS=15000,
                     retryWrites=True,
-                    retryReads=True
+                    retryReads=True,
+                    maxPoolSize=50,
+                    minPoolSize=5
                 )
 
             try:
@@ -136,8 +140,34 @@ def connect_mongodb():
         MONGO_ERROR = error_msg
         return False
 
-# Initialize MongoDB connection
-connect_mongodb()
+# Initialize MongoDB connection (Windows-compatible, direct call)
+import threading
+
+def _connect_with_timeout(timeout_seconds=30):
+    """Run connect_mongodb() in a background thread with a timeout."""
+    result_holder = [False]
+    exc_holder = [None]
+
+    def _target():
+        try:
+            result_holder[0] = connect_mongodb()
+        except Exception as e:
+            exc_holder[0] = e
+
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join(timeout=timeout_seconds)
+
+    if t.is_alive():
+        global MONGO_OK, MONGO_ERROR
+        MONGO_OK = False
+        MONGO_ERROR = "Connection timed out"
+        print("[BreastCare AI] [ERROR] MongoDB connection timed out after 30 seconds.")
+    elif exc_holder[0]:
+        print(f"[BreastCare AI] [ERROR] Unexpected error: {exc_holder[0]}")
+
+_connect_with_timeout(30)
+print(f"[BreastCare AI] MONGO_OK={MONGO_OK}, MONGO_ERROR={MONGO_ERROR}")
 
 # MongoDB collections
 def col(name):
@@ -155,21 +185,23 @@ def col(name):
 
 # ── Features ──────────────────────────────────────────────────────────────────
 FEATURES = [
-    'radius_mean','texture_mean','smoothness_mean','compactness_mean',
-    'concavity_mean','symmetry_mean','fractal_dimension_mean',
-    'radius_se','texture_se','smoothness_se','compactness_se',
-    'concavity_se','concave points_se','symmetry_se','fractal_dimension_se',
-    'smoothness_worst','compactness_worst','concavity_worst',
-    'symmetry_worst','fractal_dimension_worst'
+    'radius_mean','texture_mean','perimeter_mean','area_mean','smoothness_mean',
+    'compactness_mean','concavity_mean','concave points_mean','symmetry_mean','fractal_dimension_mean',
+    'radius_se','texture_se','perimeter_se','area_se','smoothness_se',
+    'compactness_se','concavity_se','concave points_se','symmetry_se','fractal_dimension_se',
+    'radius_worst','texture_worst','perimeter_worst','area_worst','smoothness_worst',
+    'compactness_worst','concavity_worst','concave points_worst','symmetry_worst','fractal_dimension_worst'
 ]
 FEATURE_DEFAULTS = {
-    'radius_mean':13.37,'texture_mean':18.84,'smoothness_mean':0.0962,
-    'compactness_mean':0.1043,'concavity_mean':0.0888,'symmetry_mean':0.1812,
-    'fractal_dimension_mean':0.0628,'radius_se':0.4051,'texture_se':1.2169,
-    'smoothness_se':0.00638,'compactness_se':0.0210,'concavity_se':0.0259,
-    'concave points_se':0.0111,'symmetry_se':0.0207,'fractal_dimension_se':0.00380,
-    'smoothness_worst':0.1323,'compactness_worst':0.2534,'concavity_worst':0.2720,
-    'symmetry_worst':0.2900,'fractal_dimension_worst':0.0839
+    'radius_mean':14.1273,'texture_mean':19.2896,'perimeter_mean':91.969,'area_mean':654.8891,
+    'smoothness_mean':0.0964,'compactness_mean':0.1043,'concavity_mean':0.0888,
+    'concave points_mean':0.0489,'symmetry_mean':0.1812,'fractal_dimension_mean':0.0628,
+    'radius_se':0.4052,'texture_se':1.2169,'perimeter_se':2.8661,'area_se':40.3371,
+    'smoothness_se':0.007,'compactness_se':0.0255,'concavity_se':0.0319,
+    'concave points_se':0.0118,'symmetry_se':0.0205,'fractal_dimension_se':0.0038,
+    'radius_worst':16.2692,'texture_worst':25.6772,'perimeter_worst':107.2612,'area_worst':880.5831,
+    'smoothness_worst':0.1324,'compactness_worst':0.2543,'concavity_worst':0.2722,
+    'concave points_worst':0.1146,'symmetry_worst':0.2901,'fractal_dimension_worst':0.0839
 }
 
 # ── ML Model loader with auto-retrain on version mismatch ─────────────────────
@@ -179,8 +211,10 @@ def _load_model():
         from sklearn.linear_model import LogisticRegression
         from sklearn.model_selection import train_test_split
         from sklearn.preprocessing import StandardScaler
-        print("[BreastCare AI] Retraining model for current scikit-learn version...")
+        print("[BreastCare AI] Retraining model on breast-cancer.csv (30 features)...")
         df  = pd.read_csv(CSV_PATH)
+        # Map M→1 (Malignant), B→0 (Benign)
+        df['diagnosis'] = df['diagnosis'].map({'M': 1, 'B': 0})
         X   = df[FEATURES]; y = df['diagnosis']
         Xtr,Xte,ytr,yte = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
         sc  = StandardScaler()
@@ -250,8 +284,10 @@ def doc(mongo_doc):
     """Convert MongoDB doc to dict with string _id and id fields."""
     if not mongo_doc: return None
     d = dict(mongo_doc)
-    d['id']  = str(d['_id'])
-    d['_id'] = str(d['_id'])
+    raw_id = d.get('_id')
+    id_str = str(raw_id) if raw_id is not None else ''
+    d['id']  = id_str
+    d['_id'] = id_str
     return d
 
 def docs(cursor):
@@ -263,6 +299,25 @@ def run_prediction(feat_dict):
     r = int(model.predict(X)[0])
     c = float(max(model.predict_proba(X)[0])) * 100
     return r, c
+
+def determine_stage(feat_dict):
+    """Estimate breast cancer stage (I–IV) for MALIGNANT predictions."""
+    radius      = feat_dict.get('radius_mean', 0)
+    concavity   = feat_dict.get('concavity_mean', 0)
+    comp_worst  = feat_dict.get('compactness_worst', 0)
+    conc_worst  = feat_dict.get('concavity_worst', 0)
+
+    size_score  = 0 if radius < 12 else (1 if radius < 16 else 2)
+    shape_score = 0 if concavity < 0.05 else (1 if concavity < 0.15 else 2)
+    aggr_score  = 0 if comp_worst < 0.15 else (1 if comp_worst < 0.35 else 2)
+    worst_score = 0 if conc_worst < 0.15 else (1 if conc_worst < 0.35 else 2)
+
+    total = size_score + shape_score + aggr_score + worst_score
+
+    if total <= 1:   return 'Stage I'
+    elif total <= 3: return 'Stage II'
+    elif total <= 5: return 'Stage III'
+    else:            return 'Stage IV'
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 def notify(user_id, message, link=None):
@@ -372,6 +427,189 @@ def signin():
     return render_template('signin.html', mongo_ok=MONGO_OK)
 
 # Signup route removed - users can only be created by admin
+
+@app.route('/forgot-password', methods=['GET','POST'])
+def forgot_password():
+    """Forgot password — user submits their email/username, receives reset link."""
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        identifier = request.form.get('identifier','').strip()
+
+        if not identifier:
+            flash('Please enter your username or email.', 'danger')
+            return render_template('forgot_password.html')
+
+        if not MONGO_OK:
+            flash('Database connection error. Please try again later.', 'danger')
+            return render_template('forgot_password.html')
+
+        # Find user by username or email
+        u = col('users').find_one({
+            '$or': [{'username': identifier}, {'email': identifier}]
+        })
+        if not u:
+            flash('No account found with that username or email.', 'danger')
+            return render_template('forgot_password.html')
+
+        # Generate reset token
+        import secrets
+        token = secrets.token_urlsafe(32)
+        expiry = datetime.now() + timedelta(hours=1)
+        
+        # Store reset token
+        col('password_resets').insert_one({
+            'user_id': str(u['_id']),
+            'token': token,
+            'expires_at': expiry.isoformat(),
+            'created_at': now_str()
+        })
+
+        # Generate reset URL
+        reset_url = url_for('reset_password', token=token, _external=True)
+        
+        # Try to send email
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            
+            # Get email settings (you can configure these in admin_email_settings)
+            smtp_server = os.environ.get('EMAIL_SERVER', 'smtp.gmail.com')
+            smtp_port = int(os.environ.get('EMAIL_PORT', '587'))
+            smtp_user = os.environ.get('EMAIL_USERNAME', '')
+            smtp_password = os.environ.get('EMAIL_PASSWORD', '')
+            
+            # Debug logging
+            print(f"[DEBUG] SMTP Server: {smtp_server}")
+            print(f"[DEBUG] SMTP Port: {smtp_port}")
+            print(f"[DEBUG] SMTP User: {smtp_user}")
+            print(f"[DEBUG] SMTP Password Configured: {'Yes' if smtp_password else 'No'}")
+            
+            if smtp_user and smtp_password:
+                print(f"[DEBUG] Attempting to send email to {u.get('email', identifier)}")
+                # Create email message
+                msg = MIMEMultipart()
+                msg['From'] = smtp_user
+                msg['To'] = u.get('email', identifier)
+                msg['Subject'] = 'Password Reset - BreastCare AI'
+                
+                body = f"""
+Hello {u.get('full_name', 'User')},
+
+You requested a password reset for your BreastCare AI account.
+
+Click the link below to reset your password:
+{reset_url}
+
+This link will expire in 1 hour for security reasons.
+
+If you didn't request this password reset, please ignore this email.
+
+Best regards,
+BreastCare AI Team
+                """
+                
+                msg.attach(MIMEText(body, 'plain'))
+                
+                # Send email
+                try:
+                    print(f"[DEBUG] Starting email send process...")
+                    if smtp_port == 465:
+                        print(f"[DEBUG] Using SSL connection on port {smtp_port}")
+                        import ssl
+                        context = ssl.create_default_context()
+                        with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context) as server:
+                            print(f"[DEBUG] Connected to SMTP server via SSL")
+                            server.login(smtp_user, smtp_password)
+                            print(f"[DEBUG] SMTP login successful")
+                            server.sendmail(smtp_user, u.get('email', identifier), msg.as_string())
+                            print(f"[DEBUG] Email sent successfully via SSL")
+                    else:
+                        print(f"[DEBUG] Using STARTTLS connection on port {smtp_port}")
+                        with smtplib.SMTP(smtp_server, smtp_port) as server:
+                            server.ehlo()
+                            print(f"[DEBUG] EHLO sent")
+                            server.starttls()
+                            print(f"[DEBUG] STARTTLS initiated")
+                            server.login(smtp_user, smtp_password)
+                            print(f"[DEBUG] SMTP login successful")
+                            server.sendmail(smtp_user, u.get('email', identifier), msg.as_string())
+                            print(f"[DEBUG] Email sent successfully via STARTTLS")
+                    
+                    flash('Password reset link sent to your email. Check your inbox.', 'success')
+                    print(f"[DEBUG] Success message flashed to user")
+                    return render_template('forgot_password.html')
+                except Exception as e:
+                    print(f"[DEBUG] Email sending failed: {str(e)}")
+                    print(f"[DEBUG] Error type: {type(e).__name__}")
+                    raise
+            else:
+                # Email not configured - show reset link directly
+                return render_template('forgot_password.html', 
+                                 show_link=True, 
+                                 reset_url=reset_url,
+                                 user_name=u.get('full_name', 'User'),
+                                 user_email=u.get('email', identifier))
+                
+        except Exception as e:
+            print(f"[BreastCare AI] Failed to send reset email: {e}")
+            # Show reset link directly if email fails
+            return render_template('forgot_password.html', 
+                             show_link=True, 
+                             reset_url=reset_url,
+                             user_name=u.get('full_name', 'User'),
+                             user_email=u.get('email', identifier))
+
+    return render_template('forgot_password.html')
+
+@app.route('/reset-password/<token>', methods=['GET','POST'])
+def reset_password(token):
+    """Handle password reset with token."""
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    
+    if not MONGO_OK:
+        flash('Database connection error. Please try again later.', 'danger')
+        return redirect(url_for('signin'))
+    
+    # Find valid reset token
+    from datetime import datetime
+    reset = col('password_resets').find_one({
+        'token': token,
+        'expires_at': {'$gt': datetime.now().isoformat()}
+    })
+    
+    if not reset:
+        flash('Invalid or expired reset link. Please request a new password reset.', 'danger')
+        return redirect(url_for('forgot_password'))
+    
+    if request.method == 'POST':
+        new_password = request.form.get('new_password','').strip()
+        confirm_password = request.form.get('confirm_password','').strip()
+        
+        if not new_password or len(new_password) < 6:
+            flash('New password must be at least 6 characters.', 'danger')
+            return render_template('reset_password.html', token=token)
+        
+        if new_password != confirm_password:
+            flash('Passwords do not match.', 'danger')
+            return render_template('reset_password.html', token=token)
+        
+        # Update user password
+        col('users').update_one(
+            {'_id': oid(reset['user_id'])},
+            {'$set': {'password': hash_pw(new_password), 'updated_at': now_str()}}
+        )
+        
+        # Delete used token
+        col('password_resets').delete_one({'_id': reset['_id']})
+        
+        flash('Password reset successfully. You can now sign in.', 'success')
+        return redirect(url_for('signin'))
+    
+    return render_template('reset_password.html', token=token)
 
 @app.route('/signout')
 def signout():
@@ -673,12 +911,12 @@ def upload_results(request_id):
         img_path = None; img_ann = None
         img_file = request.files.get('image')
         if img_file and img_file.filename:
-            from src.services.image_processor_advanced import generate_annotated_image, extract_features
+            from src.services.image_processor_advanced import generate_annotated_image
             fb = img_file.read()
             sn = f"{req['patient_id']}_{request_id}.jpg"
             ip = os.path.join(app.config['UPLOAD_FOLDER'], sn)
             with open(ip,'wb') as fp: fp.write(fb)
-            img_path = ip
+            img_path = sn          # store filename only, not full path
             img_ann  = generate_annotated_image(fb)
 
         col('lab_results').insert_one({
@@ -717,44 +955,48 @@ def lab_image_extract():
         flash('Select an image.','danger')
         return redirect(url_for('upload_results', request_id=rid))
     from src.services.image_processor_advanced import extract_features
-    from src.services.monitoring_system import log_prediction_event, check_system_drift, generate_drift_alert
     try:
         features = extract_features(f.read())
-        
-        # Check validation results
+        extracted = {k: float(features.get(k, FEATURE_DEFAULTS[k])) for k in FEATURES}
+        session['img_features'] = extracted
         if features.get('validation_failed', False):
-            reasons = features.get('validation_reasons', [])
-            confidence = features.get('validation_confidence', 0.0)
-            flash(f'Image validation failed: {"; ".join(reasons)} (Confidence: {confidence:.2f})','danger')
-            
-            # Log validation failure to monitoring system
-            validation_result = {
-                'is_valid': False,
-                'rejection_reasons': reasons,
-                'confidence': confidence,
-                'stage_results': features.get('stage_results', {})
-            }
-            log_prediction_event(features, validation_result)
-            return redirect(url_for('upload_results', request_id=rid))
-        
-        if features.get('validation_passed', False):
-            confidence = features.get('validation_confidence', 0.0)
-            flash(f'Image validation passed with confidence: {confidence:.2f}','success')
-            
-            # Log successful validation
-            validation_result = {
-                'is_valid': True,
-                'rejection_reasons': [],
-                'confidence': confidence,
-                'stage_results': features.get('stage_results', {})
-            }
-            log_prediction_event(features, validation_result)
-            
-        session['img_features'] = features
-        flash('Features extracted from image!','success')
+            flash('⚠️ Image may not be a standard FNA slide. Features extracted — review and adjust values.', 'warning')
+        else:
+            flash('✅ Features extracted successfully. Review values below.', 'success')
     except Exception as e:
         flash(f'Image processing failed: {e}','danger')
     return redirect(url_for('upload_results', request_id=rid))
+
+@app.route('/api/extract-features', methods=['POST'])
+def api_extract_features():
+    """JSON endpoint — returns extracted features for live form fill."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    if session.get('role') not in ('lab', 'admin'):
+        return jsonify({'error': 'Access restricted'}), 403
+    f = request.files.get('image')
+    if not f or not f.filename:
+        return jsonify({'error': 'No image provided'}), 400
+    from src.services.image_processor_advanced import extract_features
+    import math
+    try:
+        features = extract_features(f.read())
+        # Sanitize: replace NaN/Inf with dataset defaults, ensure no zeros for key features
+        extracted = {}
+        for k in FEATURES:
+            raw = features.get(k, FEATURE_DEFAULTS[k])
+            try:
+                v = float(raw)
+                # Replace NaN, Inf, or 0 for features that should never be 0
+                if math.isnan(v) or math.isinf(v) or v == 0.0:
+                    v = float(FEATURE_DEFAULTS[k])
+            except (TypeError, ValueError):
+                v = float(FEATURE_DEFAULTS[k])
+            extracted[k] = round(v, 6)
+        warning = features.get('validation_failed', False)
+        return jsonify({'features': extracted, 'warning': warning})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # ── STEP 4: Doctor — Review & Diagnose ────────────────────────────────────────
 @app.route('/results/review/<request_id>', methods=['GET','POST'])
@@ -783,6 +1025,7 @@ def review_results(request_id):
             except: adj[f] = feat_values.get(f, 0.0)
 
         result, confidence = run_prediction(adj)
+        stage = determine_stage(adj) if result == 1 else None
 
         col('predictions').insert_one({
             'patient_id':    req['patient_id'],
@@ -791,24 +1034,26 @@ def review_results(request_id):
             'features':      adj,
             'result':        result,
             'confidence':    confidence,
+            'stage':         stage,
             'doctor_notes':  request.form.get('doctor_notes',''),
             'determined_by': session['user_id'],
             'created_at':    now_str(),
             'updated_at':    now_str()
         })
+        lbl = 'MALIGNANT' if result==1 else 'BENIGN'
+        stage_str = f' — {stage}' if stage else ''
         col('lab_requests').update_one(
             {'_id': oid(request_id)},
             {'$set': {'status':'completed','updated_at': now_str()}})
 
-        lbl = 'MALIGNANT' if result==1 else 'BENIGN'
         notify_role('admin',
-            f"🏥 {req['patient_name']} [{req['patient_id']}] → {lbl} ({confidence:.1f}%)",
+            f"🏥 {req['patient_name']} [{req['patient_id']}] → {lbl}{stage_str} ({confidence:.1f}%)",
             url_for('all_predictions'))
         notify_role('receptionist',
             f"📋 Diagnosis complete: {req['patient_name']} [{req['patient_id']}]",
             url_for('patient_detail', patient_id=req['patient_id']))
 
-        flash(f"Determination saved: {lbl} ({confidence:.1f}%)", 'success')
+        flash(f"Determination saved: {lbl}{stage_str} ({confidence:.1f}%)", 'success')
         return redirect(url_for('my_predictions'))
 
     return render_template('review_results.html', user=cu(),
@@ -840,10 +1085,11 @@ def _enrich_predictions(raw, q=''):
         d  = doc(r)
         pt = col('patients').find_one({'patient_id': r['patient_id']})
         dr = col('users').find_one({'_id': oid(r.get('determined_by',''))})
-        d['full_name']   = pt['full_name']    if pt else '—'
-        d['contact']     = pt.get('contact','') if pt else '—'
-        d['gender']      = pt.get('gender','')  if pt else '—'
-        d['doctor_name'] = dr['full_name']    if dr else '—'
+        d['full_name']            = pt['full_name']              if pt else '—'
+        d['contact']              = pt.get('contact','')         if pt else '—'
+        d['gender']               = pt.get('gender','')          if pt else '—'
+        d['doctor_name']          = dr['full_name']              if dr else '—'
+        d['doctor_specialization']= dr.get('specialization','')  if dr else ''
         if q and q.lower() not in d['full_name'].lower() and q.lower() not in r['patient_id'].lower():
             continue
         rows.append(d)
@@ -859,12 +1105,13 @@ def prediction_detail(pred_id):
     pt  = col('patients').find_one({'patient_id': pr['patient_id']})
     dr  = col('users').find_one({'_id': oid(pr.get('determined_by',''))})
     pr.update({
-        'full_name':    pt['full_name']         if pt else '—',
-        'contact':      pt.get('contact','')    if pt else '—',
-        'email':        pt.get('email','')      if pt else '—',
-        'gender':       pt.get('gender','')     if pt else '—',
-        'date_of_birth':pt.get('date_of_birth','') if pt else '—',
-        'doctor_name':  dr['full_name']         if dr else '—',
+        'full_name':             pt['full_name']              if pt else '—',
+        'contact':               pt.get('contact','')         if pt else '—',
+        'email':                 pt.get('email','')           if pt else '—',
+        'gender':                pt.get('gender','')          if pt else '—',
+        'date_of_birth':         pt.get('date_of_birth','')   if pt else '—',
+        'doctor_name':           dr['full_name']              if dr else '—',
+        'doctor_specialization': dr.get('specialization','')  if dr else '',
     })
     lab = col('lab_results').find_one({'request_id': pr.get('request_id','')})
     return render_template('prediction_detail.html', user=cu(),
@@ -903,6 +1150,9 @@ def export_pdf_all():
 @role_required('admin')
 def admin_users():
     users = docs(col('users').find({},{'password':0}))
+    # Debug: print IDs to terminal
+    for u in users:
+        print(f"[DEBUG] user id={repr(u.get('id'))} _id={repr(u.get('_id'))} username={u.get('username')}")
     return render_template('admin_users.html', user=cu(), users=users)
 
 @app.route('/admin/users/create', methods=['GET','POST'])
@@ -916,10 +1166,14 @@ def create_user():
         contact_input = request.form.get('contact','').strip()
         role = request.form.get('role','').strip()
         password = request.form.get('password','').strip()
+        specialization = request.form.get('specialization','').strip()
         contact, phone_error = normalize_phone_number(contact_input)
         
         if not all([full_name, username, email, role, password]):
             flash('Please fill all required fields to create a user.','danger')
+            return render_template('admin_users.html', user=cu(), users=users)
+        if role == 'doctor' and not specialization:
+            flash('Please select a specialization for the doctor.','danger')
             return render_template('admin_users.html', user=cu(), users=users)
         if not is_valid_email(email):
             flash('Please provide a valid email address.','danger')
@@ -943,6 +1197,7 @@ def create_user():
             'email': email,
             'contact': contact,
             'role': role,
+            'specialization': specialization if role == 'doctor' else '',
             'password': hash_pw(password),
             'created_at': now_str()
         }
@@ -970,10 +1225,14 @@ def edit_user(uid):
         contact_input = request.form.get('contact','').strip()
         role = request.form.get('role','').strip()
         password = request.form.get('password','').strip()
+        specialization = request.form.get('specialization','').strip()
         contact, phone_error = normalize_phone_number(contact_input)
         
         if not all([full_name, username, email, role]):
             flash('Name, username, email, and role are required.','danger')
+            return render_template('admin_users.html', user=cu(), edit_user=edit_user)
+        if role == 'doctor' and not specialization:
+            flash('Please select a specialization for the doctor.','danger')
             return render_template('admin_users.html', user=cu(), edit_user=edit_user)
         if not is_valid_email(email):
             flash('Please provide a valid email address.','danger')
@@ -1004,6 +1263,7 @@ def edit_user(uid):
             'email': email,
             'contact': contact,
             'role': role,
+            'specialization': specialization if role == 'doctor' else '',
             'updated_at': now_str()
         }
         
@@ -1035,32 +1295,166 @@ def delete_user(uid):
 @app.route('/admin/monitoring')
 @role_required('admin')
 def admin_monitoring():
-    from src.services.monitoring_system import get_system_performance, check_system_drift, generate_drift_alert, export_monitoring_report
-    
-    # Get current metrics
-    performance_metrics = get_system_performance()
-    drift_result = check_system_drift()
-    drift_alert = generate_drift_alert(drift_result) if drift_result['drift_detected'] else None
-    
-    return render_template('admin_monitoring.html', user=cu(), 
+    try:
+        from src.services.monitoring_system import get_system_performance, check_system_drift, generate_drift_alert
+        performance_metrics = get_system_performance()
+        drift_result = check_system_drift()
+        drift_alert = generate_drift_alert(drift_result) if drift_result.get('drift_detected') else None
+    except Exception:
+        performance_metrics = {}; drift_result = {'drift_detected': False}; drift_alert = None
+    return render_template('admin_monitoring.html', user=cu(),
                            performance_metrics=performance_metrics,
-                           drift_result=drift_result,
-                           drift_alert=drift_alert)
+                           drift_result=drift_result, drift_alert=drift_alert)
 
 @app.route('/admin/monitoring/export')
 @role_required('admin')
 def admin_monitoring_export():
-    from src.services.monitoring_system import export_monitoring_report
+    try:
+        from src.services.monitoring_system import export_monitoring_report
+        filename = export_monitoring_report()
+        if filename:
+            return send_file(filename, as_attachment=True,
+                             download_name=f'monitoring_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json',
+                             mimetype='application/json')
+    except Exception:
+        pass
+    flash('Failed to export monitoring data.','danger')
+    return redirect(url_for('admin_monitoring'))
+
+# ── Rwanda Locations API ──────────────────────────────────────────────────────
+_RWANDA_DATA = None
+
+def _rwanda():
+    global _RWANDA_DATA
+    if _RWANDA_DATA is None:
+        fp = os.path.join(BASE_DIR, 'static', 'rwanda_locations.json')
+        with open(fp, 'r', encoding='utf-8') as f:
+            _RWANDA_DATA = json.load(f)
+    return _RWANDA_DATA
+
+@app.route('/api/rwanda/provinces')
+def api_rwanda_provinces():
+    return jsonify(_rwanda()['provinces'])
+
+@app.route('/api/rwanda/districts/<province>')
+def api_rwanda_districts(province):
+    d = _rwanda()['districts']
+    key = next((k for k in d if k.lower() == province.lower()), None)
+    return jsonify(d.get(key, []))
+
+@app.route('/api/rwanda/sectors/<province>/<district>')
+def api_rwanda_sectors(province, district):
+    d = _rwanda()['sectors']
+    key = next((k for k in d if k.lower() == f"{province}/{district}".lower()), None)
+    return jsonify(d.get(key, []))
+
+@app.route('/api/rwanda/cells/<province>/<district>/<sector>')
+def api_rwanda_cells(province, district, sector):
+    d = _rwanda()['cells']
+    key = next((k for k in d if k.lower() == f"{province}/{district}/{sector}".lower()), None)
+    return jsonify(d.get(key, []))
+
+@app.route('/api/rwanda/villages/<province>/<district>/<sector>/<cell>')
+def api_rwanda_villages(province, district, sector, cell):
+    d = _rwanda()['villages']
+    key = next((k for k in d if k.lower() == f"{province}/{district}/{sector}/{cell}".lower()), None)
+    return jsonify(d.get(key, []))
+
+def _get_email_settings():
+    """Load email settings from DB, fall back to .env values."""
+    try:
+        doc_settings = col('system_settings').find_one({'key': 'email_config'})
+        if doc_settings:
+            return doc_settings.get('value', {})
+    except Exception:
+        pass
+    # Fallback to .env
+    return {
+        'server': os.environ.get('EMAIL_SERVER', 'smtp.gmail.com'),
+        'port': int(os.environ.get('EMAIL_PORT', '587')),
+        'username': os.environ.get('EMAIL_USERNAME', ''),
+        'password': '',  # never expose stored password in form
+        'from_name': os.environ.get('EMAIL_FROM_NAME', 'BreastCare AI'),
+    }
+
+# ── Admin: Email Settings ────────────────────────────────────────────────
+
+@app.route('/admin/email-settings', methods=['GET','POST'])
+@role_required('admin')
+def admin_email_settings():
+    """Email settings configuration page for administrators."""
+    if request.method == 'POST':
+        action = request.form.get('action', 'save')
+        
+        if action == 'save':
+            # Save email settings to database
+            settings = {
+                'server': request.form.get('server', '').strip(),
+                'port': int(request.form.get('port', '587')),
+                'username': request.form.get('username', '').strip(),
+                'password': request.form.get('password', '').strip(),
+                'from_name': request.form.get('from_name', 'BreastCare AI').strip()
+            }
+            
+            col('system_settings').update_one(
+                {'key': 'email_config'},
+                {'$set': {'value': settings, 'updated_at': now_str()}},
+                upsert=True
+            )
+            
+            flash('Email settings saved successfully!', 'success')
+            return redirect(url_for('admin_email_settings'))
+        
+        elif action == 'test':
+            # Send test email
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            
+            settings = _get_email_settings()
+            test_to = request.form.get('test_email', '').strip()
+            
+            if not test_to:
+                flash('Please enter a test email address.', 'danger')
+                return redirect(url_for('admin_email_settings'))
+            
+            try:
+                msg = MIMEMultipart()
+                msg['From'] = f"{settings['from_name']} <{settings['username']}>"
+                msg['To'] = test_to
+                msg['Subject'] = 'Test Email - BreastCare AI'
+                
+                body = f"""
+This is a test email from BreastCare AI.
+
+If you receive this, your email configuration is working correctly.
+
+Best regards,
+BreastCare AI Team
+                """
+                
+                msg.attach(MIMEText(body, 'plain'))
+                
+                # Send email
+                if settings['port'] == 465:
+                    import ssl
+                    context = ssl.create_default_context()
+                    with smtplib.SMTP_SSL(settings['server'], settings['port'], context=context) as server:
+                        server.login(settings['username'], settings['password'])
+                        server.sendmail(settings['username'], test_to, msg.as_string())
+                else:
+                    with smtplib.SMTP(settings['server'], settings['port']) as server:
+                        server.ehlo()
+                        server.starttls()
+                        server.login(settings['username'], settings['password'])
+                        server.sendmail(settings['username'], test_to, msg.as_string())
+                
+                flash('Test email sent successfully!', 'success')
+            except Exception as e:
+                flash(f'Failed to send test email: {str(e)}', 'danger')
     
-    filename = export_monitoring_report()
-    if filename:
-        return send_file(filename, as_attachment=True,
-                         download_name=f'system_monitoring_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json',
-                         mimetype='application/json')
-    else:
-        flash('Failed to export monitoring data.','danger')
-        return redirect(url_for('admin_monitoring'))
+    # Load current settings
+    settings = _get_email_settings()
+    return render_template('admin_email_settings.html', user=cu(), settings=settings)
 
 if __name__ == '__main__':
-    # Use use_reloader=False to prevent SystemExit error when using debugger
-    app.run(debug=True, port=5000, use_reloader=False)
+    app.run(host='0.0.0.0', debug=True, port=5000, use_reloader=False)

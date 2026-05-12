@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block title %}Lab Requests{% endblock %}{% block content %}
 <div class="page-header-row">
   <div><h1 class="page-header">Lab Requests</h1><p class="text-muted fs-13 mt-8">All diagnostic test requests</p></div>
-  {% if session.role in ('doctor','admin') %}<a href="{{ url_for('new_request') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> New Request</a>{% endif %}
+  {% if session.role in ('doctor','admin') %}<a href="{{ url_for('new_request') }}" class="btn btn-primary btn-sm">+ New Request</a>{% endif %}
 </div>
 <div class="search-bar mb-16">
   <form method="GET" class="d-flex gap-sm flex-1 flex-wrap">
@@ -20,21 +20,20 @@
   <div class="table-wrap">
     {% if requests %}
     <table>
-      <thead><tr><th>Patient ID</th><th>Patient</th><th>Test Type</th><th>Priority</th><th>Status</th><th>Doctor</th><th>Date</th><th class="table-actions-head">Actions</th></tr></thead>
+      <thead><tr><th>Patient ID</th><th>Patient</th><th>Test Type</th><th>Status</th><th>Doctor</th><th>Date</th><th>Actions</th></tr></thead>
       <tbody>
       {% for r in requests %}
       <tr>
         <td><span class="id-pill">{{ r.patient_id }}</span></td>
         <td class="fw-700">{{ r.patient_name }}</td>
         <td class="fs-13">{{ r.request_type }}</td>
-        <td><span class="badge {{ 'badge-urgent' if r.priority=='urgent' else 'badge-normal' }}">{{ r.priority }}</span></td>
         <td>{% if r.status=='pending' %}<span class="badge badge-pending">Pending</span>
           {% elif r.status=='results_ready' %}<span class="badge badge-ready">Results Ready</span>
           {% elif r.status=='completed' %}<span class="badge badge-done">Completed</span>
           {% else %}<span class="badge badge-normal">{{ r.status }}</span>{% endif %}</td>
         <td class="text-muted fs-13">{{ r.doctor_name or '—' }}</td>
         <td class="text-dim fs-13">{{ r.created_at[:16] }}</td>
-        <td class="table-actions-cell">
+        <td>
           {% if r.status=='pending' and session.role in ('lab','admin') %}
           <a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm"><i class="fa-solid fa-flask"></i> Upload</a>
           {% elif r.status=='results_ready' and session.role in ('doctor','admin') %}

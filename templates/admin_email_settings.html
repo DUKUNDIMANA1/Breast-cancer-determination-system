@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% block title %}Email Settings — BreastCare AI{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title"><i class="fa-solid fa-envelope-open-text"></i> Email Settings</h1>
+  <p class="page-subtitle">Configure the SMTP email account used for password reset emails</p>
+  </div>
+
+<div class="g2" style="align-items:start;">
+
+  <!-- ── Settings Form ─────────────────────────────────────────── -->
+  <div class="card fade-in">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-gear"></i> SMTP Configuration</h3>
+    </div>
+
+    <form method="POST" action="{{ url_for('admin_email_settings') }}" id="email-form">
+      <input type="hidden" name="action" value="save">
+
+      <!-- Provider quick-select -->
+      <div class="form-group">
+        <label>Quick Setup</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="setProvider('gmail')">
+            <i class="fa-brands fa-google"></i> Gmail
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="setProvider('brevo')">
+            <i class="fa-solid fa-paper-plane"></i> Brevo
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="setProvider('outlook')">
+            <i class="fa-brands fa-microsoft"></i> Outlook
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="setProvider('yahoo')">
+            <i class="fa-brands fa-yahoo"></i> Yahoo
+          </button>
+        </div>
+        <small class="text-muted">Click to auto-fill server settings</small>
+      </div>
+
+      <div class="g2 gap-sm">
+        <div class="form-group">
+          <label for="server">SMTP Server <span class="text-danger">*</span></label>
+          <input class="form-control" type="text" name="server" id="server"
+                 value="{{ settings.server or 'smtp.gmail.com' }}"
+                 placeholder="smtp.gmail.com" required>
+        </div>
+        <div class="form-group">
+          <label for="port">Port <span class="text-danger">*</span></label>
+          <input class="form-control" type="number" name="port" id="port"
+                 value="{{ settings.port or '587' }}"
+                 placeholder="587" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="from_name">Sender Name</label>
+        <input class="form-control" type="text" name="from_name" id="from_name"
+               value="{{ settings.from_name or 'BreastCare AI' }}"
+               placeholder="BreastCare AI">
+        <small class="text-muted">This name appears in the recipient's inbox</small>
+      </div>
+
+      <div class="form-group">
+        <label for="username">Email Address <span class="text-danger">*</span></label>
+        <input class="form-control" type="email" name="username" id="username"
+               value="{{ settings.username or '' }}"
+               placeholder="your@gmail.com"
+               autocomplete="email" required>
+        <small class="text-muted">The Gmail / Brevo account that sends the emails</small>
+      </div>
+
+      <div class="form-group">
+        <label for="password">
+          App Password <span class="text-danger">*</span>
+          <span id="pw-status" style="font-size:12px;font-weight:normal;margin-left:8px;"></span>
+        </label>
+        <div style="position:relative;">
+          <input class="form-control" type="password" name="password" id="password"
+                 placeholder="{% if settings.username %}Leave blank to keep current password{% else %}Enter app password{% endif %}"
+                 autocomplete="new-password"
+                 style="padding-right:44px;">
+          <button type="button" onclick="togglePw()"
+                  style="position:absolute;right:12px;top:50%;transform:translateY(-50%);
+                         background:none;border:none;cursor:pointer;color:var(--text-secondary);">
+            <i class="fa-solid fa-eye" id="pw-eye"></i>
+          </button>
+        </div>
+        {% if settings.username %}
+        <small class="text-muted">
+          <i class="fa-solid fa-lock" style="color:var(--success)"></i>
+          A password is already saved. Leave blank to keep it, or enter a new one to replace it.
+        </small>
+        {% else %}
+        <small class="text-muted">
+          For Gmail: use an <strong>App Password</strong> (not your login password).
+          <a href="https://myaccount.google.com/apppasswords" target="_blank"
+             style="color:var(--accent-primary)">Get one here →</a>
+        </small>
+        {% endif %}
+      </div>
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">
+        <button type="submit" class="btn btn-primary">
+          <i class="fa-solid fa-save"></i> Save Settings
+        </button>
+        <button type="button" class="btn btn-outline" onclick="showTestPanel()">
+          <i class="fa-solid fa-paper-plane"></i> Send Test Email
+        </button>
+      </div>
+    </form>
+
+    <!-- Test email panel (hidden by default) -->
+    <div id="test-panel" style="display:none;margin-top:20px;padding:16px;
+         background:var(--bg-secondary);border-radius:var(--radius-md);
+         border:1px solid var(--border-color);">
+      <form method="POST" action="#" disabled>
+        <input type="hidden" name="action" value="test">
+        <!-- Pass current form values so test uses them -->
+        <input type="hidden" name="server"    id="test-server">
+        <input type="hidden" name="port"      id="test-port">
+        <input type="hidden" name="username"  id="test-username">
+        <input type="hidden" name="password"  id="test-password">
+        <input type="hidden" name="from_name" id="test-from-name">
+
+        <label style="font-weight:600;display:block;margin-bottom:8px;">
+          <i class="fa-solid fa-vial"></i> Send a test email to:
+        </label>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <input class="form-control" type="email" name="test_email"
+                 placeholder="recipient@example.com"
+                 value="{{ settings.username or '' }}"
+                 style="flex:1;" required>
+          <button type="submit" class="btn btn-primary" onclick="fillTestFields()">
+            <i class="fa-solid fa-paper-plane"></i> Send
+          </button>
+          <button type="button" class="btn btn-outline" onclick="hideTestPanel()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Help Panel ─────────────────────────────────────────────── -->
+  <div>
+    <!-- Status card -->
+    <div class="card mb-md" style="border-left:4px solid {% if settings.username %}var(--success){% else %}var(--warning){% endif %};">
+      <div class="card-header">
+        <h3 class="card-title">
+          {% if settings.username %}
+            <i class="fa-solid fa-circle-check" style="color:var(--success)"></i> Email Configured
+          {% else %}
+            <i class="fa-solid fa-triangle-exclamation" style="color:var(--warning)"></i> Not Configured
+          {% endif %}
+        </h3>
+      </div>
+      {% if settings.username %}
+      <div style="padding:0 var(--spacing-xl) var(--spacing-lg);">
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">
+          <div><strong>Server:</strong> {{ settings.server }}:{{ settings.port }}</div>
+          <div><strong>Account:</strong> {{ settings.username }}</div>
+          <div><strong>Sender name:</strong> {{ settings.from_name or 'BreastCare AI' }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div style="padding:0 var(--spacing-xl) var(--spacing-lg);font-size:13px;color:var(--text-secondary);">
+        Password reset emails will not be sent until you configure an email account.
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Gmail guide -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-brands fa-google"></i> Gmail Setup Guide</h3>
+      </div>
+      <div style="padding:0 var(--spacing-xl) var(--spacing-lg);">
+        <ol style="font-size:13px;color:var(--text-secondary);line-height:2.2;padding-left:18px;margin:0;">
+          <li>Go to <a href="https://myaccount.google.com/security" target="_blank" style="color:var(--accent-primary)">Google Account → Security</a></li>
+          <li>Enable <strong>2-Step Verification</strong></li>
+          <li>Go to <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:var(--accent-primary)">App Passwords</a></li>
+          <li>Select <strong>Mail</strong> → <strong>Generate</strong></li>
+          <li>Copy the 16-character password</li>
+          <li>Paste it in the <strong>App Password</strong> field above</li>
+        </ol>
+        <div style="margin-top:12px;padding:10px 14px;background:rgba(0,194,255,0.07);
+             border-radius:6px;font-size:12px;color:var(--text-secondary);">
+          <i class="fa-solid fa-circle-info" style="color:var(--accent-primary)"></i>
+          Use your Gmail address as the email, and the 16-char App Password (not your Gmail login password).
+          Free limit: <strong>500 emails/day</strong>.
+        </div>
+      </div>
+    </div>
+
+    <!-- Brevo guide -->
+    <div class="card" style="margin-top:16px;">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-paper-plane"></i> Brevo Setup Guide</h3>
+      </div>
+      <div style="padding:0 var(--spacing-xl) var(--spacing-lg);">
+        <ol style="font-size:13px;color:var(--text-secondary);line-height:2.2;padding-left:18px;margin:0;">
+          <li>Sign up free at <a href="https://app.brevo.com" target="_blank" style="color:var(--accent-primary)">app.brevo.com</a></li>
+          <li>Go to <strong>SMTP & API → SMTP</strong> tab</li>
+          <li>Copy the <strong>Login</strong> and <strong>Password</strong></li>
+          <li>Click <strong>Brevo</strong> quick-setup button above</li>
+          <li>Paste your login and password</li>
+        </ol>
+        <div style="margin-top:12px;padding:10px 14px;background:rgba(0,194,255,0.07);
+             border-radius:6px;font-size:12px;color:var(--text-secondary);">
+          <i class="fa-solid fa-circle-info" style="color:var(--accent-primary)"></i>
+          Free limit: <strong>300 emails/day</strong>. No credit card required.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const providers = {
+  gmail:   { server: 'smtp.gmail.com',          port: '587' },
+  brevo:   { server: 'smtp-relay.brevo.com',    port: '587' },
+  outlook: { server: 'smtp-mail.outlook.com',   port: '587' },
+  yahoo:   { server: 'smtp.mail.yahoo.com',     port: '465' },
+};
+
+function setProvider(name) {
+  const p = providers[name];
+  if (!p) return;
+  document.getElementById('server').value = p.server;
+  document.getElementById('port').value   = p.port;
+  document.getElementById('username').focus();
+}
+
+function togglePw() {
+  const input = document.getElementById('password');
+  const icon  = document.getElementById('pw-eye');
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.classList.replace('fa-eye', 'fa-eye-slash');
+  } else {
+    input.type = 'password';
+    icon.classList.replace('fa-eye-slash', 'fa-eye');
+  }
+}
+
+function showTestPanel() {
+  document.getElementById('test-panel').style.display = 'block';
+}
+function hideTestPanel() {
+  document.getElementById('test-panel').style.display = 'none';
+}
+
+function fillTestFields() {
+  document.getElementById('test-server').value    = document.getElementById('server').value;
+  document.getElementById('test-port').value      = document.getElementById('port').value;
+  document.getElementById('test-username').value  = document.getElementById('username').value;
+  document.getElementById('test-password').value  = document.getElementById('password').value;
+  document.getElementById('test-from-name').value = document.getElementById('from_name').value;
+}
+</script>
+
+{% endblock %}

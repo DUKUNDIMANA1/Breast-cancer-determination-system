@@ -52,9 +52,9 @@
           <th>Name</th>
           <th>Doctor</th>
           <th>Result</th>
-          <th>Confidence</th>
+          <th>Stage</th>
           <th>Date</th>
-          <th class="table-actions-head"></th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -68,9 +68,9 @@
               {% if r.result == 1 %}Malignant{% else %}Benign{% endif %}
             </span>
           </td>
-          <td class="mono">{{ "%.1f"|format(r.confidence) }}%</td>
+          <td>{{ r.stage or ('Benign' if r.result==0 else 'Unknown') }}</td>
           <td class="text-muted">{{ r.created_at[:16] }}</td>
-          <td class="table-actions-cell">
+          <td>
             <a href="{{ url_for('prediction_detail', pred_id=r.id) }}" class="btn btn-outline btn-sm btn-icon">
               <i class="fa-solid fa-eye"></i>
             </a>
@@ -112,7 +112,7 @@
   <div class="card-title mb-12">Recently Registered</div>
   {% if recent_patients %}
   <div class="table-wrap"><table>
-    <thead><tr><th>Patient ID</th><th>Name</th><th>Gender</th><th>Contact</th><th>Registered</th><th class="table-actions-head"></th></tr></thead>
+    <thead><tr><th>Patient ID</th><th>Name</th><th>Gender</th><th>Contact</th><th>Registered</th><th></th></tr></thead>
     <tbody>
     {% for p in recent_patients %}
     <tr>
@@ -121,7 +121,7 @@
       <td class="text-muted fs-13">{{ p.gender or '—' }}</td>
       <td class="td-mono">{{ p.contact or '—' }}</td>
       <td class="text-dim fs-13">{{ p.created_at[:16] }}</td>
-      <td class="table-actions-cell"><a href="{{ url_for('patient_detail',patient_id=p.patient_id) }}" class="btn btn-outline btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a></td>
+      <td><a href="{{ url_for('patient_detail',patient_id=p.patient_id) }}" class="btn btn-outline btn-sm btn-icon">👁</a></td>
     </tr>
     {% endfor %}
     </tbody>
@@ -139,11 +139,11 @@
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
     <div class="card-title" style="margin:0"><i class="fa-solid fa-clock"></i> Pending Lab Requests</div>
-    <a href="{{ url_for('lab_dashboard') }}" class="btn btn-secondary btn-sm">Full Queue <i class="fa-solid fa-arrow-right"></i></a>
+    <a href="{{ url_for('lab_dashboard') }}" class="btn btn-secondary btn-sm">Full Queue →</a>
   </div>
   {% if pending_list %}
   <div class="table-wrap"><table>
-    <thead><tr><th>Patient ID</th><th>Patient</th><th>Test</th><th>Doctor</th><th>Priority</th><th>Date</th><th class="table-actions-head"></th></tr></thead>
+    <thead><tr><th>Patient ID</th><th>Patient</th><th>Test</th><th>Doctor</th><th>Date</th><th></th></tr></thead>
     <tbody>
     {% for r in pending_list %}
     <tr>
@@ -151,9 +151,8 @@
       <td class="fw-700">{{ r.patient_name }}</td>
       <td class="fs-13">{{ r.request_type }}</td>
       <td class="text-muted fs-13">{{ r.doctor_name or '—' }}</td>
-      <td><span class="badge {{ 'badge-urgent' if r.priority=='urgent' else 'badge-normal' }}">{{ r.priority }}</span></td>
       <td class="text-dim fs-13">{{ r.created_at[:16] }}</td>
-      <td class="table-actions-cell"><a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm"><i class="fa-solid fa-upload"></i> Upload</a></td>
+      <td><a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm">Upload →</a></td>
     </tr>
     {% endfor %}
     </tbody>
@@ -180,16 +179,15 @@
   </div>
   {% if ready_list %}
   <div class="table-wrap"><table>
-    <thead><tr><th>Patient ID</th><th>Patient</th><th>Test Type</th><th>Priority</th><th>Ready Since</th><th class="table-actions-head"></th></tr></thead>
+    <thead><tr><th>Patient ID</th><th>Patient</th><th>Test Type</th><th>Ready Since</th><th></th></tr></thead>
     <tbody>
     {% for r in ready_list %}
     <tr>
       <td><span class="id-pill">{{ r.patient_id }}</span></td>
       <td class="fw-700">{{ r.patient_name }}</td>
       <td class="fs-13">{{ r.request_type }}</td>
-      <td><span class="badge {{ 'badge-urgent' if r.priority=='urgent' else 'badge-normal' }}">{{ r.priority }}</span></td>
-      <td class="text-dim fs-13">{{ r.updated_at[:16] }}</td>
-      <td class="table-actions-cell"><a href="{{ url_for('review_results',request_id=r.id) }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-stethoscope"></i> Review & Diagnose</a></td>
+      <td class="text-dim fs-13">{{ r.get('updated_at', r.get('created_at', 'N/A'))[:16] }}</td>
+      <td><a href="{{ url_for('review_results',request_id=r.id) }}" class="btn btn-primary btn-sm">Review & Diagnose →</a></td>
     </tr>
     {% endfor %}
     </tbody>

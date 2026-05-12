@@ -9,7 +9,6 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
-from image_validator import validate_medical_image
 
 # Feature extraction constants
 FEATURE_NAMES = [
@@ -200,19 +199,8 @@ def extract_features(image_bytes):
             if feature_name not in features:
                 features[feature_name] = DEFAULT_FEATURES[feature_name]
 
-        # Run validation pipeline before returning features
-        validation_result = validate_medical_image(image_bytes, features)
-
-        if not validation_result['is_valid']:
-            print(f"[Image Processor] Validation failed: {validation_result['rejection_reasons']}")
-            # Return features but mark as invalid for system to handle
-            features['validation_failed'] = True
-            features['validation_reasons'] = validation_result['rejection_reasons']
-            features['validation_confidence'] = validation_result['confidence']
-        else:
-            print(f"[Image Processor] Validation passed with confidence: {validation_result['confidence']:.2f}")
-            features['validation_passed'] = True
-            features['validation_confidence'] = validation_result['confidence']
+        # Validation module removed - features returned without validation
+        print(f"[Image Processor Improved] Features extracted successfully")
 
         return features
 

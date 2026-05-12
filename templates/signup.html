@@ -282,7 +282,7 @@
         <div class="alert alert-{{ cat }}" style="padding:10px 14px;border-radius:8px;font-size:13px;display:flex;align-items:center;gap:9px;margin-bottom:12px;
           {% if cat=='success' %}background:rgba(0,229,176,.1);border:1px solid rgba(0,229,176,.3);color:var(--success);
           {% elif cat=='danger' %}background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.3);color:var(--danger);
-          {% else %}background:rgba(0,194,255,.1);border:1px solid rgba(0,194,255,.3);color:var(--accent-primary);{% endif %}">
+          {% else %}background:rgba(0,194,255,.1);border:1px solid rgba(0,194,255,.3);color:var(--accent);{% endif %}">
           <span>{% if cat=='success' %}<i class="fa-solid fa-check"></i>{% elif cat=='danger' %}<i class="fa-solid fa-xmark"></i>{% else %}<i class="fa-solid fa-circle-info"></i>{% endif %}</span>
           {{ msg }}
         </div>
@@ -359,7 +359,7 @@
 
       <div class="form-group">
         <label>Contact / Phone <span class="opt">(optional)</span></label>
-        <input class="fc" type="tel" name="contact" data-phone-input
+        <input class="fc" type="text" name="contact"
           placeholder="e.g. 0788 000 001"/>
       </div>
 
@@ -382,7 +382,7 @@
         </div>
       </div>
 
-      <button type="submit" class="btn btn-primary">Create Account <i class="fa-solid fa-arrow-right"></i></button>
+      <button type="submit" class="btn btn-primary">Create Account →</button>
     </form>
 
     <div class="auth-footer">

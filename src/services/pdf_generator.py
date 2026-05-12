@@ -46,7 +46,7 @@ def _pred_story(pred, patient):
         ['Patient ID',  pred.get('patient_id','—'),          'Patient Name', patient.get('full_name','—')],
         ['Gender',      patient.get('gender') or '—',         'DOB',         patient.get('date_of_birth') or '—'],
         ['Contact',     patient.get('contact') or '—',        'Email',       patient.get('email') or '—'],
-        ['Doctor',      pred.get('doctor_name','—'),          'Date',        str(pred.get('created_at',''))[:16]],
+        ['Address',     patient.get('address') or '—',        'Date',        str(pred.get('created_at',''))[:16]],
     ]
     t = Table(info, colWidths=[38*mm,57*mm,35*mm,60*mm])
     t.setStyle(TableStyle([
@@ -63,7 +63,13 @@ def _pred_story(pred, patient):
     story.append(t)
     story.append(Spacer(1, 8))
 
-    rt = Table([[f'DIAGNOSIS: {lbl}', f'Confidence: {pred.get("confidence",0):.1f}%']],
+    diagnosis_info = [f'DIAGNOSIS: {lbl}', f'Confidence: {pred.get("confidence",0):.1f}%']
+
+    # Add stage information if available and diagnosis is malignant
+    if is_mal and pred.get('stage'):
+        diagnosis_info.append(f'Stage: {pred.get("stage")}')
+
+    rt = Table([diagnosis_info],
                colWidths=[120*mm,70*mm])
     rt.setStyle(TableStyle([
         ('BACKGROUND',(0,0),(0,0),color),
@@ -76,6 +82,29 @@ def _pred_story(pred, patient):
     ]))
     story.append(rt)
     story.append(Spacer(1, 8))
+
+    # Add Doctor Information Section
+    story.append(Paragraph('Attending Physician Information',
+        ParagraphStyle('h3',fontSize=9,fontName='Helvetica-Bold',
+                       textColor=colors.HexColor('#1e293b'),spaceAfter=3)))
+        
+    doctor_info = [
+        ['Doctor Name', pred.get('doctor_name','—'), 'Specialization', pred.get('doctor_specialization','—')],
+    ]
+    dt = Table(doctor_info, colWidths=[50*mm,45*mm,55*mm,50*mm])
+        dt.setStyle(TableStyle([
+            ('FONTNAME',(0,0),(-1,-1),'Helvetica'),
+            ('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),
+            ('FONTNAME',(2,0),(2,-1),'Helvetica-Bold'),
+            ('FONTSIZE',(0,0),(-1,-1),9),
+            ('BACKGROUND',(0,0),(0,-1),colors.HexColor('#fef3c7')),
+            ('BACKGROUND',(2,0),(2,-1),colors.HexColor('#fef3c7')),
+            ('ROWBACKGROUNDS',(0,0),(-1,-1),[colors.HexColor('#fffbeb'),colors.HexColor('#fef3c7')]),
+            ('GRID',(0,0),(-1,-1),0.4,colors.HexColor('#cbd5e1')),
+            ('PADDING',(0,0),(-1,-1),5),
+        ]))
+        story.append(dt)
+        story.append(Spacer(1, 8))
 
     story.append(Paragraph('Cell Nucleus Feature Values',
         ParagraphStyle('h3',fontSize=9,fontName='Helvetica-Bold',
@@ -102,6 +131,26 @@ def _pred_story(pred, patient):
     ]))
     story.append(ft)
 
+    # Add Stage Information section
+    if is_mal and pred.get('stage'):
+        story.append(Spacer(1,5))
+        story.append(Paragraph('Cancer Stage Information:',
+            ParagraphStyle('nb',fontSize=9,fontName='Helvetica-Bold')))
+
+        stage_info = pred.get('stage', '')
+        stage_descriptions = {
+            'Stage I': 'Small, localised tumour — excellent prognosis with early treatment.',
+            'Stage II': 'Moderate size or limited spread — good prognosis with treatment.',
+            'Stage III': 'Larger tumour or regional spread — requires aggressive treatment.',
+            'Stage IV': 'Advanced spread — immediate specialist referral required.'
+        }
+
+        stage_desc = stage_descriptions.get(stage_info, 'Consult specialist for detailed staging information.')
+        story.append(Paragraph(stage_info,
+            ParagraphStyle('nt',fontSize=9,fontName='Helvetica-Bold', textColor=colors.HexColor('#dc2626'))))
+        story.append(Paragraph(stage_desc,
+            ParagraphStyle('nt',fontSize=9,fontName='Helvetica')))
+
     if pred.get('doctor_notes'):
         story.append(Spacer(1,5))
         story.append(Paragraph('Doctor Notes:',
@@ -123,6 +172,7 @@ def generate_single_pdf(patient_id):
     pred    = dict(pred); patient = dict(patient)
     dr = db['users'].find_one({'_id': pred.get('determined_by')})
     pred['doctor_name'] = dr['full_name'] if dr else '—'
+    pred['doctor_specialization'] = dr.get('specialization', '') if dr else ''
 
     path = os.path.join(OUT, f'report_{patient_id}.pdf')
     doc  = SimpleDocTemplate(path, pagesize=A4,
@@ -171,6 +221,7 @@ def generate_all_pdf():
         patient = db['patients'].find_one({'patient_id': pred.get('patient_id','')})
         dr      = db['users'].find_one({'_id': pred.get('determined_by')})
         pred['doctor_name'] = dr['full_name'] if dr else '—'
+        pred['doctor_specialization'] = dr.get('specialization', '') if dr else ''
         if patient:
             story += _pred_story(pred, dict(patient))
 

@@ -3,8 +3,8 @@
   <div><h1 class="page-header">Prediction Detail</h1>
     <p class="text-muted fs-13 mt-8"><span class="id-pill">{{ pred.patient_id }}</span> · {{ pred.full_name }}</p></div>
   <div class="btn-group">
-    {% if session.role=='admin' %}<a href="{{ url_for('export_pdf_single',patient_id=pred.patient_id) }}" class="btn btn-warn btn-sm"><i class="fa-solid fa-file-pdf"></i> PDF</a>{% endif %}
-    <a href="{{ url_for('patient_detail',patient_id=pred.patient_id) }}" class="btn btn-outline btn-sm"><i class="fa-solid fa-arrow-left"></i> Patient</a>
+    {% if session.role in ('admin','data_manager') %}<a href="{{ url_for('export_pdf_single',patient_id=pred.patient_id) }}" class="btn btn-warn btn-sm">📄 PDF</a>{% endif %}
+    <a href="{{ url_for('patient_detail',patient_id=pred.patient_id) }}" class="btn btn-outline btn-sm">← Patient</a>
   </div>
 </div>
 <div class="g2 mb-16">
@@ -12,12 +12,111 @@
     <div class="result-banner {{ 'mal' if pred.result==1 else 'ben' }} mb-16">
       <div class="fs-12 fw-700 text-dim text-uppercase letter-spacing-sm mb-4">AI Diagnosis Result</div>
       <div class="result-label {{ 'mal' if pred.result==1 else 'ben' }}">{{ 'MALIGNANT' if pred.result==1 else 'BENIGN' }}</div>
-      <div class="conf-bar mt-8"><div class="conf-fill {{ 'mal' if pred.result==1 else 'ben' }} conf-fill-{{ pred.confidence }}"></div></div>
-      <div class="font-mono confidence-{{ 'mal' if pred.result==1 else 'ben' }}">{{ "%.2f"|format(pred.confidence) }}% confidence</div>
+      <div class="font-mono confidence-{{ 'mal' if pred.result==1 else 'ben' }}">Stage: {{ pred.stage or ('Benign' if pred.result==0 else 'Unknown') }}</div>
       <div class="fs-12 text-dim mt-8">{{ 'Immediate clinical follow-up recommended.' if pred.result==1 else 'Continue routine monitoring.' }}</div>
     </div>
+    
+    <!-- Diagnosis Description Table -->
+    <div class="card mb-16">
+      <div class="sec-label">📋 Diagnosis Description</div>
+      <div class="table-wrap">
+        <table class="diagnosis-table">
+          <tbody>
+            <tr>
+              <td class="diagnosis-label">Diagnosis Result</td>
+              <td class="diagnosis-value">
+                <span class="badge {{ 'badge-mal' if pred.result==1 else 'badge-ben' }}">
+                  {{ 'Malignant Cancer' if pred.result==1 else 'Benign Condition' }}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td class="diagnosis-label">Clinical Stage</td>
+              <td class="diagnosis-value">
+                {% if pred.result==1 %}
+                  {% if pred.stage %}
+                    {% if pred.stage == 'I' %}Stage I - Early stage, localized tumor{% endif %}
+                    {% if pred.stage == 'II' %}Stage II - Larger tumor, limited spread{% endif %}
+                    {% if pred.stage == 'III' %}Stage III - Advanced local disease{% endif %}
+                    {% if pred.stage == 'IV' %}Stage IV - Metastatic disease{% endif %}
+                  {% else %}
+                    <span class="text-warn">Stage not determined</span>
+                  {% endif %}
+                {% else %}
+                  <span class="text-success">Benign - No cancer detected</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td class="diagnosis-label">Risk Level</td>
+              <td class="diagnosis-value">
+                {% if pred.result==1 %}
+                  {% if pred.stage == 'I' %}<span class="text-warn">Moderate Risk</span>{% endif %}
+                  {% if pred.stage == 'II' %}<span class="text-danger">High Risk</span>{% endif %}
+                  {% if pred.stage == 'III' %}<span class="text-danger">Very High Risk</span>{% endif %}
+                  {% if pred.stage == 'IV' %}<span class="text-danger">Critical Risk</span>{% endif %}
+                  {% if not pred.stage %}<span class="text-warn">Risk Level Unknown</span>{% endif %}
+                {% else %}
+                  <span class="text-success">Low Risk</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td class="diagnosis-label">Recommended Action</td>
+              <td class="diagnosis-value">
+                {% if pred.result==1 %}
+                  {% if pred.stage == 'I' %}
+                    <div>• Surgical consultation recommended</div>
+                    <div>• Consider radiation therapy</div>
+                    <div>• Regular monitoring schedule</div>
+                  {% endif %}
+                  {% if pred.stage == 'II' %}
+                    <div>• Immediate surgical intervention</div>
+                    <div>• Chemotherapy likely required</div>
+                    <div>• Radiation therapy planning</div>
+                  {% endif %}
+                  {% if pred.stage == 'III' %}
+                    <div>• Aggressive treatment required</div>
+                    <div>• Multi-modality therapy</div>
+                    <div>• Specialized oncology care</div>
+                  {% endif %}
+                  {% if pred.stage == 'IV' %}
+                    <div>• Palliative care focus</div>
+                    <div>• Systemic therapy</div>
+                    <div>• Quality of life management</div>
+                  {% endif %}
+                  {% if not pred.stage %}
+                    <div>• Further staging required</div>
+                    <div>• Complete diagnostic workup</div>
+                    <div>• Specialist consultation</div>
+                  {% endif %}
+                {% else %}
+                  <div>• Routine follow-up care</div>
+                  <div>• Annual screening recommended</div>
+                  <div>• Monitor for changes</div>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td class="diagnosis-label">Prognosis</td>
+              <td class="diagnosis-value">
+                {% if pred.result==1 %}
+                  {% if pred.stage == 'I' %}<span class="text-success">Excellent with treatment</span>{% endif %}
+                  {% if pred.stage == 'II' %}<span class="text-warn">Good with proper treatment</span>{% endif %}
+                  {% if pred.stage == 'III' %}<span class="text-warn">Fair with aggressive treatment</span>{% endif %}
+                  {% if pred.stage == 'IV' %}<span class="text-danger">Variable, focus on quality</span>{% endif %}
+                  {% if not pred.stage %}<span class="text-dim">Depends on final staging</span>{% endif %}
+                {% else %}
+                  <span class="text-success">Excellent</span>
+                {% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
     <div class="card">
-      <div class="sec-label"><i class="fa-solid fa-user"></i> Patient Information</div>
+      <div class="sec-label">👤 Patient Information</div>
       <div class="info-grid">
         <div><div class="il">Patient ID</div><div class="iv"><code>{{ pred.patient_id }}</code></div></div>
         <div><div class="il">Name</div><div class="iv">{{ pred.full_name }}</div></div>
@@ -31,11 +130,11 @@
       {% if pred.doctor_notes %}
       <div class="divider"></div>
       <div class="il">Doctor's Notes</div>
-      <div style="background:var(--bg-tertiary);padding:10px;border-radius:8px;font-size:13px;color:var(--text-secondary);margin-top:6px;">{{ pred.doctor_notes }}</div>{% endif %}
+      <div style="background:var(--bg3);padding:10px;border-radius:8px;font-size:13px;color:var(--text2);margin-top:6px;">{{ pred.doctor_notes }}</div>{% endif %}
     </div>
     {% if lab_result and lab_result.image_annotated %}
     <div class="card mt-16">
-      <div class="sec-label"><i class="fa-solid fa-microscope"></i> Tissue Image</div>
+      <div class="sec-label">🔬 Tissue Image</div>
       <div class="img-compare">
         {% if lab_result.image_path %}<div class="img-box"><div class="img-label">Original</div><img src="/{{ lab_result.image_path }}"/></div>{% endif %}
         <div class="img-box"><div class="img-label">Annotated</div><img src="data:image/jpeg;base64,{{ lab_result.image_annotated }}"/></div>
@@ -43,7 +142,7 @@
     </div>{% endif %}
   </div>
   <div class="card">
-    <div class="sec-label"><i class="fa-solid fa-chart-column"></i> Feature Values (20)</div>
+    <div class="sec-label">📊 Feature Values (20)</div>
     <div class="fs-12 text-dim mb-8">Mean</div>
     <div class="feat-list mb-12">
       {% for f in ['radius_mean','texture_mean','smoothness_mean','compactness_mean','concavity_mean','symmetry_mean','fractal_dimension_mean'] %}
@@ -63,7 +162,7 @@
     <div class="divider"></div>
     <form method="POST" action="{{ url_for('delete_prediction',pred_id=pred.id) }}"
       onsubmit="return confirm('Delete this prediction permanently?')">
-      <button type="submit" class="btn btn-danger btn-sm"><i class="fa-solid fa-trash"></i> Delete Prediction</button>
+      <button type="submit" class="btn btn-danger btn-sm">🗑 Delete Prediction</button>
     </form>{% endif %}
   </div>
 </div>{% endblock %}
