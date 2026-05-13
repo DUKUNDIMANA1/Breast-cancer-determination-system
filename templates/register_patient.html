@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}{% if editing %}Edit Patient{% else %}Register Patient{% endif %} — BreastCare AI{% endblock %}
 {% block content %}
 <div class="page-header-row">
@@ -11,7 +11,7 @@
 <div class="g2">
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">👤 Patient Information</h3>
+      <h3 class="card-title"><i class="fa-solid fa-user"></i> Patient Information</h3>
     </div>
     <form method="POST">
       <div class="form-group"><label class="form-label">Full Name <span class="text-danger">*</span></label>
@@ -29,8 +29,11 @@
           </select></div>
       </div>
       <div class="form-group">
-        <label class="form-label">Contact / Phone <span class="text-danger">*</span></label>
-        <div id="patient-phone-picker"></div>
+        <label class="form-label">Contact / Phone <span class="text-dim">(optional)</span></label>
+        <input class="form-control" type="tel" name="contact" id="contact"
+               data-phone-input
+               value="{{ patient.contact if patient else '' }}"
+               placeholder="7XXXXXXXX"/>
       </div>
       <div class="form-group"><label class="form-label">Email <span class="text-dim">(optional)</span></label>
         <input class="form-control" type="email" name="email" value="{{ patient.email if patient else '' }}" placeholder="patient@email.com"/></div>
@@ -77,30 +80,30 @@
         </div>
       </div>
       <button type="submit" class="btn btn-primary btn-block">
-        {% if editing %}💾 Save Changes{% else %}✅ Register Patient{% endif %}
+        {% if editing %}<i class="fa-solid fa-floppy-disk"></i> Save Changes{% else %}<i class="fa-solid fa-user-plus"></i> Register Patient{% endif %}
       </button>
     </form>
   </div>
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">ℹ️ About Patient Registration</h3>
+      <h3 class="card-title"><i class="fa-solid fa-circle-info"></i> About Patient Registration</h3>
     </div>
     {% if editing %}
     <div class="alert alert-info mb-md">Editing patient: <b>{{ patient.patient_id }}</b></div>
     {% endif %}
     <div class="process-steps">
       <div class="step-item">
-        <div class="step-number">🆔</div>
+        <div class="step-number"><i class="fa-solid fa-id-badge"></i></div>
         <div class="step-content"><b>Auto-generated Patient ID</b><br>
         A unique ID (format: BC-YYYYMM-XXXXXX) is automatically assigned and links all future lab samples, test requests, and diagnosis records to this patient.</div>
       </div>
       <div class="step-item">
-        <div class="step-number">🔗</div>
+        <div class="step-number"><i class="fa-solid fa-link"></i></div>
         <div class="step-content"><b>Chain of Custody</b><br>
         After registration, doctors can submit lab test requests for this patient. The system then notifies the lab team automatically.</div>
       </div>
       <div class="step-item">
-        <div class="step-number">🔒</div>
+        <div class="step-number"><i class="fa-solid fa-lock"></i></div>
         <div class="step-content"><b>Data Privacy</b><br>
         Patient records are only accessible to authorized medical staff based on their role.</div>
       </div>
@@ -121,16 +124,6 @@
 <!-- Rwanda address uses local Flask API -->
 {% block scripts %}
 <script>
-// ── Phone picker init ─────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function() {
-  if (typeof PhonePicker !== 'undefined') {
-    PhonePicker.init('patient-phone-picker', 'contact', {
-      defaultCode:  '+250',
-      initialValue: '{{ patient.contact if patient else "" }}',
-      hintId:       'patient-phone-picker-hint',
-    });
-  }
-});
 
 // ── Rwanda address loader (uses local /api/rwanda/* endpoints) ────────────────
 (function() {
@@ -218,4 +211,5 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 })();
 </script>
+{% endblock %}
 {% endblock %}

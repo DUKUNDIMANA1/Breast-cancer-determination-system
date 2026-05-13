@@ -119,6 +119,13 @@ static/reports/*.pdf
 artifacts/model.pkl
 artifacts/scaler.pkl
 data_storage/
+models/
 *.pyc
 app_backup_*.py
 app_clean.py
+app_clean*.py
+*_backup*.py
+*_fixed*.py
+*_optimized*.py
+templates/*_backup.html
+templates/*_fixed.html

@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}{{ patient.full_name }} — Patient Detail{% endblock %}
 {% block content %}
 <div class="page-header-row">
@@ -6,17 +6,17 @@
     <p class="text-muted fs-13 mt-8">Patient record · <span class="id-pill">{{ patient.patient_id }}</span></p></div>
   <div class="btn-group">
     {% if session.role in ('receptionist','admin') %}
-    <a href="{{ url_for('edit_patient',patient_id=patient.patient_id) }}" class="btn btn-secondary btn-sm">✏️ Edit</a>{% endif %}
+    <a href="{{ url_for('edit_patient',patient_id=patient.patient_id) }}" class="btn btn-secondary btn-sm"><i class="fa-solid fa-pen"></i> Edit</a>{% endif %}
     {% if session.role in ('doctor','admin') %}
-    <a href="{{ url_for('new_request') }}?patient_id={{ patient.patient_id }}" class="btn btn-primary btn-sm">🔬 Request Lab Test</a>{% endif %}
+    <a href="{{ url_for('new_request') }}?patient_id={{ patient.patient_id }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-microscope"></i> Request Lab Test</a>{% endif %}
     {% if session.role in ('admin','data_manager') %}
-    <a href="{{ url_for('export_pdf_single',patient_id=patient.patient_id) }}" class="btn btn-warn btn-sm">📄 PDF</a>{% endif %}
-    <a href="{{ url_for('patients') }}" class="btn btn-outline btn-sm">← Back</a>
+    <a href="{{ url_for('export_pdf_single',patient_id=patient.patient_id) }}" class="btn btn-warn btn-sm"><i class="fa-solid fa-file-pdf"></i> PDF</a>{% endif %}
+    <a href="{{ url_for('patients') }}" class="btn btn-outline btn-sm">&larr; Back</a>
   </div>
 </div>
 <div class="g2 mb-16">
   <div class="card">
-    <div class="sec-label">👤 Patient Information</div>
+    <div class="sec-label"><i class="fa-solid fa-user"></i> Patient Information</div>
     <div class="info-grid">
       <div><div class="il">Patient ID</div><div class="iv"><code>{{ patient.patient_id }}</code></div></div>
       <div><div class="il">Full Name</div><div class="iv">{{ patient.full_name }}</div></div>
@@ -36,15 +36,15 @@
   <div>
     <!-- Chain status -->
     <div class="card mb-16">
-      <div class="sec-label">🔗 Chain of Custody Status</div>
+      <div class="sec-label"><i class="fa-solid fa-link"></i> Chain of Custody Status</div>
       {% set has_request = requests|length > 0 %}
       {% set has_results = requests|selectattr('status','in',['results_ready','completed'])|list|length > 0 %}
       {% set has_prediction = predictions|length > 0 %}
       <div class="chain">
-        <div class="chain-step done"><div class="cs-num">Step 1</div><div class="cs-role">📋 Reception</div><div class="cs-status text-success">✓ Registered</div></div>
-        <div class="chain-step {{ 'done' if has_request else 'pending' }}"><div class="cs-num">Step 2</div><div class="cs-role">👨‍⚕️ Doctor</div><div class="cs-status {{ 'text-success' if has_request else 'text-dim' }}">{{ '✓ Requested' if has_request else 'Awaiting' }}</div></div>
-        <div class="chain-step {{ 'done' if has_results else 'pending' }}"><div class="cs-num">Step 3</div><div class="cs-role">🧪 Lab</div><div class="cs-status {{ 'text-success' if has_results else 'text-dim' }}">{{ '✓ Uploaded' if has_results else 'Pending' }}</div></div>
-        <div class="chain-step {{ 'done' if has_prediction else 'pending' }}"><div class="cs-num">Step 4</div><div class="cs-role">🔬 Diagnosis</div><div class="cs-status {{ 'text-success' if has_prediction else 'text-dim' }}">{{ '✓ Complete' if has_prediction else 'Pending' }}</div></div>
+        <div class="chain-step done"><div class="cs-num">Step 1</div><div class="cs-role"><i class="fa-solid fa-clipboard-list"></i> Reception</div><div class="cs-status text-success"><i class="fa-solid fa-check"></i> Registered</div></div>
+        <div class="chain-step {{ 'done' if has_request else 'pending' }}"><div class="cs-num">Step 2</div><div class="cs-role"><i class="fa-solid fa-user-doctor"></i> Doctor</div><div class="cs-status {{ 'text-success' if has_request else 'text-dim' }}">{{ '<i class="fa-solid fa-check"></i> Requested' if has_request else 'Awaiting' }}</div></div>
+        <div class="chain-step {{ 'done' if has_results else 'pending' }}"><div class="cs-num">Step 3</div><div class="cs-role"><i class="fa-solid fa-vial"></i> Lab</div><div class="cs-status {{ 'text-success' if has_results else 'text-dim' }}">{{ '<i class="fa-solid fa-check"></i> Uploaded' if has_results else 'Pending' }}</div></div>
+        <div class="chain-step {{ 'done' if has_prediction else 'pending' }}"><div class="cs-num">Step 4</div><div class="cs-role"><i class="fa-solid fa-microscope"></i> Diagnosis</div><div class="cs-status {{ 'text-success' if has_prediction else 'text-dim' }}">{{ '<i class="fa-solid fa-check"></i> Complete' if has_prediction else 'Pending' }}</div></div>
       </div>
     </div>
     <!-- Latest prediction -->
@@ -85,40 +85,21 @@
       <td class="text-dim fs-13">{{ r.created_at[:16] }}</td>
       <td>
         {% if r.status=='pending' and session.role in ('lab','admin') %}
-        <a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm">Upload →</a>
+        <a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm">Upload &rarr;</a>
         {% elif r.status=='results_ready' and session.role in ('doctor','admin') %}
-        <a href="{{ url_for('review_results',request_id=r.id) }}" class="btn btn-primary btn-sm">Review →</a>{% endif %}
+        <a href="{{ url_for('review_results',request_id=r.id) }}" class="btn btn-primary btn-sm">Review &rarr;</a>{% endif %}
       </td>
     </tr>
     {% endfor %}
     </tbody>
   </table></div>
-  {% else %}<div class="empty" style="padding:20px"><div class="ei" style="font-size:28px">📝</div><p class="fs-13">No lab requests yet.</p></div>{% endif %}
+  {% else %}<div class="empty" style="padding:20px"><div class="ei" style="font-size:28px"><i class="fa-solid fa-file-pen"></i></div><p class="fs-13">No lab requests yet.</p></div>{% endif %}
 </div>
 
 <!-- Patient Images - Doctors Only -->
-{% if session.role in ('doctor','admin') %}
-{% set patient_images = [] %}
-{% for r in requests %}
-  {% if r.status in ['results_ready','completed'] %}
-    {% set lab_result = col('lab_results').find_one({'request_id': r.id}) %}
-    {% if lab_result and (lab_result.image_path or lab_result.image_annotated) %}
-      {% set _ = patient_images.append({
-        'request_id': r.id,
-        'request_type': r.request_type,
-        'created_at': r.created_at,
-        'image_path': lab_result.image_path,
-        'image_annotated': lab_result.image_annotated,
-        'lab_name': lab_result.lab_name or 'Unknown',
-        'submitted_at': lab_result.submitted_at
-      }) %}
-    {% endif %}
-  {% endif %}
-{% endfor %}
-
-{% if patient_images %}
+{% if session.role in ('doctor','admin') and patient_images %}
 <div class="card mb-16">
-  <div class="card-title mb-12">🖼️ Medical Images ({{ patient_images|length }})</div>
+  <div class="card-title mb-12"><i class="fa-solid fa-images"></i> Medical Images ({{ patient_images|length }})</div>
   <div class="table-wrap"><table>
     <thead><tr><th>Test Type</th><th>Lab Technician</th><th>Submitted</th><th>Images</th></tr></thead>
     <tbody>
@@ -145,11 +126,10 @@
   </table></div>
 </div>
 {% endif %}
-{% endif %}
 
 <!-- Predictions -->
 <div class="card">
-  <div class="card-title mb-12">📊 Diagnosis History ({{ predictions|length }})</div>
+  <div class="card-title mb-12"><i class="fa-solid fa-chart-column"></i> Diagnosis History ({{ predictions|length }})</div>
   {% if predictions %}
   <div class="table-wrap"><table>
     <thead><tr><th>Result</th><th>Stage</th><th>Doctor</th><th>Date</th><th></th></tr></thead>
@@ -160,10 +140,10 @@
       <td>{{ (p.stage or 'Unknown') if p.result==1 else 'Benign' }}</td>
       <td class="text-muted fs-13">{{ p.doctor_name or '—' }}</td>
       <td class="text-dim fs-13">{{ p.created_at[:16] }}</td>
-      <td><a href="{{ url_for('prediction_detail',pred_id=p.id) }}" class="btn btn-outline btn-sm btn-icon">👁</a></td>
+      <td><a href="{{ url_for('prediction_detail',pred_id=p.id) }}" class="btn btn-outline btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a></td>
     </tr>
     {% endfor %}
     </tbody>
   </table></div>
-  {% else %}<div class="empty" style="padding:20px"><div class="ei" style="font-size:28px">🔬</div><p class="fs-13">No diagnoses yet.</p></div>{% endif %}
+  {% else %}<div class="empty" style="padding:20px"><div class="ei" style="font-size:28px"><i class="fa-solid fa-microscope"></i></div><p class="fs-13">No diagnoses yet.</p></div>{% endif %}
 </div>{% endblock %}

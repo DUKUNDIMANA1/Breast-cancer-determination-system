@@ -262,26 +262,29 @@ def is_valid_email(email):
 def normalize_phone_number(raw_phone):
     """
     Validate and normalize phone to E.164 format.
-    Requires international format with country code (+...).
+    Accepts international format: +250XXXXXXXXX (13 digits total including +).
     """
     if not raw_phone:
         return "", None
 
     phone = raw_phone.strip()
+    # Count only digits
     digit_count = sum(ch.isdigit() for ch in phone)
-    if digit_count < 10:
-        return None, "Phone number must contain at least 10 digits."
+
     if not phone.startswith("+"):
-        return None, "Phone number must start with '+' and include country code."
+        return None, "Phone number must start with '+' and include country code (e.g. +250788000001)."
+
+    if digit_count != 12:
+        return None, f"Phone number must have exactly 12 digits after '+' (e.g. +250788000001). You entered {digit_count} digits."
 
     try:
         parsed = phonenumbers.parse(phone, None)
         if not phonenumbers.is_valid_number(parsed):
-            return None, "Enter a valid phone number with country code."
+            return None, "Enter a valid phone number with country code (e.g. +250788000001)."
         normalized = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
         return normalized, None
     except phonenumbers.NumberParseException:
-        return None, "Enter a valid international phone number (example: +2507XXXXXXXX)."
+        return None, "Enter a valid international phone number (e.g. +250788000001)."
 
 def oid(id_str):
     """Safely convert string to ObjectId."""
@@ -383,6 +386,10 @@ def login_required(f):
         if 'user_id' not in session:
             flash('Please sign in to continue.', 'warning')
             return redirect(url_for('signin'))
+        # Block access if user must change their password first
+        if session.get('must_change_password') and f.__name__ != 'change_password':
+            flash('You must change your default password before continuing.', 'warning')
+            return redirect('/change-password')
         return f(*a, **k)
     return d
 
@@ -393,6 +400,9 @@ def role_required(*roles):
             if 'user_id' not in session:
                 flash('Please sign in.', 'warning')
                 return redirect(url_for('signin'))
+            if session.get('must_change_password') and f.__name__ != 'change_password':
+                flash('You must change your default password before continuing.', 'warning')
+                return redirect('/change-password')
             if session.get('role') not in roles:
                 flash('Access restricted.', 'danger')
                 return redirect(url_for('dashboard'))
@@ -428,6 +438,12 @@ def signin():
                 u = doc(u)
                 session.update({'user_id': u['id'], 'username': u['username'],
                                 'full_name': u['full_name'], 'role': u['role']})
+                # Check if user must change their default password
+                raw_u = col('users').find_one({'_id': oid(u['id'])})
+                if raw_u and raw_u.get('must_change_password', False):
+                    session['must_change_password'] = True
+                    flash('You must change your default password before continuing.', 'warning')
+                    return redirect('/change-password')
                 flash(f"Welcome, {u['full_name']}!", 'success')
                 return redirect(url_for('dashboard'))
             flash('Invalid username or password.', 'danger')
@@ -626,6 +642,50 @@ def signout():
     flash('Signed out.','info')
     return redirect(url_for('signin'))
 
+@app.route('/change-password', methods=['GET','POST'])
+def change_password():
+    """Force password change on first login."""
+    # Must be logged in to change password
+    if 'user_id' not in session:
+        return redirect(url_for('signin'))
+    if request.method == 'POST':
+        current_pw  = request.form.get('current_password','').strip()
+        new_pw      = request.form.get('new_password','').strip()
+        confirm_pw  = request.form.get('confirm_password','').strip()
+
+        if not all([current_pw, new_pw, confirm_pw]):
+            flash('All fields are required.', 'danger')
+            return render_template('change_password.html', user=cu())
+
+        # Verify current password
+        u = col('users').find_one({'_id': oid(session['user_id'])})
+        if not u or u.get('password') != hash_pw(current_pw):
+            flash('Current password is incorrect.', 'danger')
+            return render_template('change_password.html', user=cu())
+
+        if len(new_pw) < 6:
+            flash('New password must be at least 6 characters.', 'danger')
+            return render_template('change_password.html', user=cu())
+
+        if new_pw != confirm_pw:
+            flash('New passwords do not match.', 'danger')
+            return render_template('change_password.html', user=cu())
+
+        if new_pw == current_pw:
+            flash('New password must be different from your current password.', 'danger')
+            return render_template('change_password.html', user=cu())
+
+        # Update password and clear the must_change flag
+        col('users').update_one(
+            {'_id': oid(session['user_id'])},
+            {'$set': {'password': hash_pw(new_pw), 'must_change_password': False, 'updated_at': now_str()}}
+        )
+        session.pop('must_change_password', None)
+        flash('Password changed successfully. Welcome!', 'success')
+        return redirect(url_for('dashboard'))
+
+    return render_template('change_password.html', user=cu())
+
 # ── Notifications ─────────────────────────────────────────────────────────────
 @app.route('/notifications')
 @login_required
@@ -733,7 +793,12 @@ def register_patient():
         fn = request.form.get('full_name','').strip()
         email = request.form.get('email','').strip()
         contact_input = request.form.get('contact','').strip()
-        contact, phone_error = normalize_phone_number(contact_input)
+
+        # Phone is optional — only validate if provided
+        if contact_input:
+            contact, phone_error = normalize_phone_number(contact_input)
+        else:
+            contact, phone_error = '', None
 
         if not fn:
             flash('Patient name required.','danger')
@@ -804,8 +869,26 @@ def patient_detail(patient_id):
         dr = col('users').find_one({'_id': oid(pr.get('determined_by',''))})
         pr['doctor_name'] = dr['full_name'] if dr else '—'
 
+    # Build patient_images list for doctor/admin view
+    patient_images = []
+    for r in reqs:
+        if r.get('status') in ('results_ready', 'completed'):
+            lr = col('lab_results').find_one({'request_id': r['id']})
+            if lr and (lr.get('image_path') or lr.get('image_annotated')):
+                lab_user = col('users').find_one({'_id': oid(lr.get('submitted_by',''))})
+                patient_images.append({
+                    'request_id':     r['id'],
+                    'request_type':   r['request_type'],
+                    'created_at':     r['created_at'],
+                    'image_path':     lr.get('image_path',''),
+                    'image_annotated':lr.get('image_annotated',''),
+                    'lab_name':       lab_user['full_name'] if lab_user else '—',
+                    'submitted_at':   lr.get('submitted_at',''),
+                })
+
     return render_template('patient_detail.html', user=cu(),
-                           patient=p, requests=reqs, predictions=preds)
+                           patient=p, requests=reqs, predictions=preds,
+                           patient_images=patient_images)
 
 @app.route('/patients/<patient_id>/edit', methods=['GET','POST'])
 @role_required('receptionist','admin')
@@ -1225,7 +1308,7 @@ def create_user():
             flash('Username or email already exists.','danger')
             return render_template('admin_users.html', user=cu(), users=users)
         
-        # Create new user
+        # Create new user — must change password on first login
         user_data = {
             'full_name': full_name,
             'username': username,
@@ -1234,6 +1317,7 @@ def create_user():
             'role': role,
             'specialization': specialization if role == 'doctor' else '',
             'password': hash_pw(password),
+            'must_change_password': True,
             'created_at': now_str()
         }
         
@@ -1502,5 +1586,5 @@ BreastCare AI Team
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    debug = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'
     app.run(host='0.0.0.0', debug=debug, port=port, use_reloader=False)

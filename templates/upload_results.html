@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block title %}Upload Lab Results{% endblock %}{% block content %}
+﻿{% extends "base.html" %}{% block title %}Upload Lab Results{% endblock %}{% block content %}
 <div class="page-header">
   <h1 class="page-title">Upload Lab Results</h1>
   <p class="page-subtitle">Request #{{ req.id }} · <span class="id-pill">{{ req.patient_id }}</span> · {{ req.patient_name }}</p>
@@ -164,8 +164,8 @@ function extractFeatures() {
       banner.style.display = 'block';
       banner.className = data.warning ? 'alert alert-warning mb-md' : 'alert alert-success mb-md';
       msg.textContent = data.warning
-        ? '⚠️ Image may not be a standard FNA slide — ' + filled + ' values filled. Review carefully.'
-        : '✅ ' + filled + ' feature values extracted and filled from image. Review and adjust if needed.';
+        ? '<i class="fa-solid fa-triangle-exclamation"></i> Image may not be a standard FNA slide — ' + filled + ' values filled. Review carefully.'
+        : '<i class="fa-solid fa-check-circle"></i> ' + filled + ' feature values extracted and filled from image. Review and adjust if needed.';
       status.innerHTML = '';
       btn.innerHTML = '<i class="fa-solid fa-check"></i> Extracted';
       btn.className = 'btn btn-outline mt-lg';

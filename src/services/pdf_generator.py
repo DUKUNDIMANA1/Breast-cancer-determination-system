@@ -92,19 +92,19 @@ def _pred_story(pred, patient):
         ['Doctor Name', pred.get('doctor_name','—'), 'Specialization', pred.get('doctor_specialization','—')],
     ]
     dt = Table(doctor_info, colWidths=[50*mm,45*mm,55*mm,50*mm])
-        dt.setStyle(TableStyle([
-            ('FONTNAME',(0,0),(-1,-1),'Helvetica'),
-            ('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),
-            ('FONTNAME',(2,0),(2,-1),'Helvetica-Bold'),
-            ('FONTSIZE',(0,0),(-1,-1),9),
-            ('BACKGROUND',(0,0),(0,-1),colors.HexColor('#fef3c7')),
-            ('BACKGROUND',(2,0),(2,-1),colors.HexColor('#fef3c7')),
-            ('ROWBACKGROUNDS',(0,0),(-1,-1),[colors.HexColor('#fffbeb'),colors.HexColor('#fef3c7')]),
-            ('GRID',(0,0),(-1,-1),0.4,colors.HexColor('#cbd5e1')),
-            ('PADDING',(0,0),(-1,-1),5),
-        ]))
-        story.append(dt)
-        story.append(Spacer(1, 8))
+    dt.setStyle(TableStyle([
+        ('FONTNAME',(0,0),(-1,-1),'Helvetica'),
+        ('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),
+        ('FONTNAME',(2,0),(2,-1),'Helvetica-Bold'),
+        ('FONTSIZE',(0,0),(-1,-1),9),
+        ('BACKGROUND',(0,0),(0,-1),colors.HexColor('#fef3c7')),
+        ('BACKGROUND',(2,0),(2,-1),colors.HexColor('#fef3c7')),
+        ('ROWBACKGROUNDS',(0,0),(-1,-1),[colors.HexColor('#fffbeb'),colors.HexColor('#fef3c7')]),
+        ('GRID',(0,0),(-1,-1),0.4,colors.HexColor('#cbd5e1')),
+        ('PADDING',(0,0),(-1,-1),5),
+    ]))
+    story.append(dt)
+    story.append(Spacer(1, 8))
 
     story.append(Paragraph('Cell Nucleus Feature Values',
         ParagraphStyle('h3',fontSize=9,fontName='Helvetica-Bold',

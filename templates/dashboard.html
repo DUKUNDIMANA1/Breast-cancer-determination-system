@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}Dashboard — BreastCare AI{% endblock %}
 {% block content %}
 <div class="page-header-row">
@@ -123,7 +123,7 @@
       <td class="text-muted fs-13">{{ p.gender or '—' }}</td>
       <td class="td-mono">{{ p.contact or '—' }}</td>
       <td class="text-dim fs-13">{{ p.created_at[:16] }}</td>
-      <td><a href="{{ url_for('patient_detail',patient_id=p.patient_id) }}" class="btn btn-outline btn-sm btn-icon">👁</a></td>
+      <td><a href="{{ url_for('patient_detail',patient_id=p.patient_id) }}" class="btn btn-outline btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a></td>
     </tr>
     {% endfor %}
     </tbody>
@@ -141,7 +141,7 @@
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
     <div class="sec-label" style="margin:0;border:none;padding:0"><i class="fa-solid fa-clock"></i> Pending Lab Requests</div>
-    <a href="{{ url_for('lab_dashboard') }}" class="btn btn-secondary btn-sm">Full Queue →</a>
+    <a href="{{ url_for('lab_dashboard') }}" class="btn btn-secondary btn-sm">Full Queue &rarr;</a>
   </div>
   {% if pending_list %}
   <div class="table-wrap"><table>
@@ -154,7 +154,7 @@
       <td class="fs-13">{{ r.request_type }}</td>
       <td class="text-muted fs-13">{{ r.doctor_name or '—' }}</td>
       <td class="text-dim fs-13">{{ r.created_at[:16] }}</td>
-      <td><a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm">Upload →</a></td>
+      <td><a href="{{ url_for('upload_results',request_id=r.id) }}" class="btn btn-success btn-sm">Upload &rarr;</a></td>
     </tr>
     {% endfor %}
     </tbody>
@@ -189,7 +189,7 @@
       <td class="fw-700">{{ r.patient_name }}</td>
       <td class="fs-13">{{ r.request_type }}</td>
       <td class="text-dim fs-13">{{ r.get('updated_at', r.get('created_at', 'N/A'))[:16] }}</td>
-      <td><a href="{{ url_for('review_results',request_id=r.id) }}" class="btn btn-primary btn-sm">Review & Diagnose →</a></td>
+      <td><a href="{{ url_for('review_results',request_id=r.id) }}" class="btn btn-primary btn-sm">Review & Diagnose &rarr;</a></td>
     </tr>
     {% endfor %}
     </tbody>
