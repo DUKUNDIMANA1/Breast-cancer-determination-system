@@ -24,20 +24,20 @@
     {% if lab_result.lab_notes %}
     <div class="divider"></div>
     <div class="il">Lab Technician Notes</div>
-    <div style="background:var(--bg3);padding:10px;border-radius:8px;font-size:13px;color:var(--text2);margin-top:6px;">{{ lab_result.lab_notes }}</div>{% endif %}
+    <div style="background:var(--bg-tertiary);padding:10px;border-radius:8px;font-size:13px;color:var(--text-secondary);margin-top:6px;">{{ lab_result.lab_notes }}</div>{% endif %}
     {% if lab_result.image_annotated or lab_result.image_path %}
     <div class="divider"></div>
     <div class="il mb-8">🔬 Tissue Image</div>
     <div class="img-compare">
       {% if lab_result.image_path or lab_result.image_annotated %}
-      <div style="border-radius:10px;overflow:hidden;background:var(--bg-secondary);margin-bottom:16px;border:1.5px solid var(--border-color);">
+      <div style="border-radius:10px;overflow:hidden;background:var(--bg-secondary);margin-bottom:16px;border:1.5px solid var(--border-primary);">
         {% if lab_result.image_path %}
-        <img src="{{ url_for('static', filename=lab_result.image_path) }}"
+        <img src="{{ url_for('serve_upload', filename=lab_result.image_path) }}"
              onerror="this.src='/static/images/no-image.png';"
              alt="Tissue image uploaded by lab"
              style="width:100%;max-height:460px;object-fit:contain;display:block;"/>
         {% endif %}
-        <div style="padding:8px 12px;font-size:12px;color:var(--text-secondary);border-top:1px solid var(--border-color);">
+        <div style="padding:8px 12px;font-size:12px;color:var(--text-secondary);border-top:1px solid var(--border-primary);">
           <i class="fa-solid fa-microscope"></i> Uploaded by lab technician · {{ lab_result.submitted_at[:16] if lab_result.submitted_at else '' }}
         </div>
       </div>
@@ -104,7 +104,7 @@
   </div>
   <div class="card mb-16">
     <div class="sec-label">🩺 Doctor's Determination Notes</div>
-    <textarea class="fc" name="doctor_notes" rows="3" placeholder="Clinical interpretation, treatment recommendations, follow-up plan…"></textarea>
+    <textarea class="form-control" name="doctor_notes" rows="3" placeholder="Clinical interpretation, treatment recommendations, follow-up plan…"></textarea>
   </div>
   <div class="card" style="background:rgba(0,132,255,0.05);border-color:rgba(0,132,255,.3);">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">

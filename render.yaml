@@ -1,49 +1,16 @@
 services:
-  # Flask Web Service
   - type: web
     name: breastcare-ai
-    env: python
-    plan: free
+    runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
-    healthCheckPath: /
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
     envVars:
       - key: MONGO_URI
-        value: ${MONGO_URI}
+        sync: false          # set manually in Render dashboard
       - key: MONGO_DB_NAME
-        value: ${MONGO_DB_NAME}
+        value: breastcare_ai
       - key: SECRET_KEY
-        value: ${SECRET_KEY}
-      - key: EMAIL_SERVER
-        value: ${EMAIL_SERVER}
-      - key: EMAIL_PORT
-        value: ${EMAIL_PORT}
-      - key: EMAIL_USERNAME
-        value: ${EMAIL_USERNAME}
-      - key: EMAIL_PASSWORD
-        value: ${EMAIL_PASSWORD}
-
-# Auto-scaling configuration
-autoscaling:
-  enabled: true
-  minInstances: 1
-  maxInstances: 10
-  targetMemoryPercent: 70
-  targetCPUPercent: 80
-
-# Health check configuration
-healthCheck:
-  httpHeaders:
-    - key: User-Agent
-      value: breastcare-ai-health-check/1.0
-
-# Build optimization
-build:
-  dockerfilePath: ./Dockerfile
-  dockerContext: .
-
-# Deployment regions
-regions:
-  - oregon
-  - frankfurt
-  - singapore
+        generateValue: true  # Render auto-generates a secure key
+      - key: FLASK_DEBUG
+        value: "false"
+    autoDeploy: true

@@ -106,6 +106,12 @@
   transition: background var(--transition-fast);
 }
 
+@media (max-width: 480px) {
+  .account-row { grid-template-columns: 1fr 1fr; font-size: 11px; }
+  .account-row > *:last-child { display: none; }
+  .auth-box { padding: var(--spacing-lg) var(--spacing-md) !important; }
+}
+
 .account-row:last-child {
   border-bottom: none;
 }

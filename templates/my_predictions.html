@@ -5,7 +5,7 @@
 </div>
 <div class="search-bar mb-16">
   <form method="GET" style="display:flex;gap:8px;flex:1">
-    <input class="fc" type="text" name="q" value="{{ q }}" placeholder="Search patient name or ID…"/>
+    <input class="form-control" type="text" name="q" value="{{ q }}" placeholder="Search patient name or ID…"/>
     <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-magnifying-glass"></i></button>
     {% if q %}<a href="{{ request.path }}" class="btn btn-secondary btn-sm"><i class="fa-solid fa-xmark"></i></a>{% endif %}
   </form>

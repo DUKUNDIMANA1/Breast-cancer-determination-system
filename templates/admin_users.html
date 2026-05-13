@@ -2,136 +2,192 @@
 {% block title %}User Management — BreastCare AI{% endblock %}
 {% block content %}
 
-<div class="page-header">
-  <h1 class="page-title"><i class="fa-solid fa-users"></i> User Management</h1>
-  <p class="page-subtitle">Create and manage system users</p>
+<div class="page-header-row">
+  <div>
+    <h1 class="page-header" style="margin:0"><i class="fa-solid fa-users"></i> User Management</h1>
+    <p class="text-muted fs-13 mt-8">Create and manage system users</p>
+  </div>
+  <button type="button" class="btn btn-primary" onclick="showCreateForm()">
+    <i class="fa-solid fa-user-plus"></i> Add New User
+  </button>
 </div>
 
-<div class="g2" style="align-items:start;">
-
-  <!-- ── User List ─────────────────────────────────────────── -->
-  <div class="card fade-in">
-    <div class="card-header">
-      <h3 class="card-title"><i class="fa-solid fa-list"></i> Existing Users</h3>
-      <button type="button" class="btn btn-primary btn-sm" onclick="showCreateForm()">
-        <i class="fa-solid fa-plus"></i> Add New User
-      </button>
-    </div>
-
-    <div class="table-responsive">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Username</th>
-            <th>Email</th>
-            <th>Contact</th>
-            <th>Role</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for user in users %}
-          <tr>
-            <td>{{ user.full_name }}</td>
-            <td>{{ user.username }}</td>
-            <td>{{ user.email }}</td>
-            <td>{{ user.contact }}</td>
-            <td><span class="role-badge">{{ user.role }}</span></td>
-            <td>
-              <button type="button" class="btn btn-outline btn-sm" onclick="editUser('{{ user._id }}')">
-                <i class="fa-solid fa-edit"></i>
+<!-- ── Users Table ─────────────────────────────────────────────────── -->
+<div class="card mb-16">
+  <div class="sec-label"><i class="fa-solid fa-list"></i> System Users ({{ users|length }})</div>
+  {% if users %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Full Name</th>
+          <th>Username</th>
+          <th>Email</th>
+          <th>Contact</th>
+          <th>Role</th>
+          <th>Specialization</th>
+          <th>Joined</th>
+          <th class="table-actions-head">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td class="text-dim fs-12">{{ loop.index }}</td>
+          <td class="fw-700">{{ u.full_name }}</td>
+          <td class="td-mono fs-12">{{ u.username }}</td>
+          <td class="text-muted fs-13">{{ u.email }}</td>
+          <td class="text-muted fs-13">{{ u.contact or '—' }}</td>
+          <td>
+            <span class="badge
+              {% if u.role == 'admin' %}badge-warning
+              {% elif u.role == 'doctor' %}badge-info
+              {% elif u.role == 'receptionist' %}badge-success
+              {% elif u.role == 'lab' %}role-lab
+              {% else %}badge-normal{% endif %}">
+              {{ u.role|title }}
+            </span>
+          </td>
+          <td class="text-muted fs-13">
+            {% if u.role == 'doctor' %}{{ u.specialization or '—' }}{% else %}—{% endif %}
+          </td>
+          <td class="text-dim fs-13">{{ u.created_at[:10] if u.created_at else '—' }}</td>
+          <td class="table-actions-cell">
+            {% set uid = u.id or u._id or '' %}
+            {% if uid and uid != 'None' %}
+            <div class="btn-group">
+              <button type="button" class="btn btn-outline btn-sm btn-icon"
+                      onclick="editUser('{{ uid }}')" title="Edit">
+                <i class="fa-solid fa-pen"></i>
               </button>
-              <button type="button" class="btn btn-outline btn-sm" onclick="deleteUser('{{ user._id }}')">
+              <button type="button" class="btn btn-danger btn-sm btn-icon"
+                      onclick="deleteUser('{{ uid }}', '{{ u.full_name }}')" title="Delete">
                 <i class="fa-solid fa-trash"></i>
               </button>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <div class="ei"><i class="fa-solid fa-users-slash"></i></div>
+    <p>No users found.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Create / Edit Form (slide-in panel) ────────────────────────── -->
+<div id="user-form-card" class="card fade-in" style="display:none;max-width:640px;">
+  <div class="sec-label" style="display:flex;justify-content:space-between;align-items:center;">
+    <span id="form-title"><i class="fa-solid fa-user-plus"></i> Create New User</span>
+    <button type="button" class="btn btn-outline btn-sm" onclick="hideForm()">
+      <i class="fa-solid fa-xmark"></i> Close
+    </button>
   </div>
 
-  <!-- ── Create/Edit User Form ───────────────────────────────────── -->
-  <div class="card fade-in" id="user-form-card" style="display:none;">
-    <div class="card-header">
-      <h3 class="card-title" id="form-title"><i class="fa-solid fa-user-plus"></i> Create New User</h3>
-      <button type="button" class="btn btn-outline btn-sm" onclick="hideForm()">
-        <i class="fa-solid fa-times"></i> Close
-      </button>
-    </div>
+  <form method="POST" id="user-form" action="{{ url_for('create_user') }}">
+    <input type="hidden" name="action" id="form-action" value="create">
+    <input type="hidden" name="user_id" id="edit-user-id">
 
-    <form method="POST" id="user-form">
-      <input type="hidden" name="action" value="create" id="form-action">
-      <input type="hidden" name="user_id" id="edit-user-id">
-      
+    <div class="g2">
       <div class="form-group">
-        <label for="full_name">Full Name <span class="text-danger">*</span></label>
-        <input class="form-control" type="text" name="full_name" id="full_name" 
+        <label class="form-label">Full Name <span class="text-danger">*</span></label>
+        <input class="form-control" type="text" name="full_name" id="full_name"
                placeholder="Enter full name" required>
       </div>
-      
       <div class="form-group">
-        <label for="username">Username</label>
-        <input class="form-control" type="text" name="username" id="username" 
+        <label class="form-label">Username <span class="text-danger">*</span></label>
+        <input class="form-control" type="text" name="username" id="username"
                placeholder="Choose username" required>
       </div>
-      
-      <div class="form-group" style="display:block !important; visibility:visible !important;">
-        <label for="email">Email <span class="text-danger">*</span></label>
-        <input class="form-control" type="email" name="email" id="email" 
-               placeholder="Enter email address" required style="display:block !important; visibility:visible !important;">
-      </div>
-      
+    </div>
+
+    <div class="g2">
       <div class="form-group">
-        <label for="contact_create">Contact / Phone <span class="text-danger">*</span></label>
-        <input class="form-control" type="tel" name="contact" id="contact_create"
-               placeholder="+2507XXXXXXXX" required>
+        <label class="form-label">Email <span class="text-danger">*</span></label>
+        <input class="form-control" type="email" name="email" id="email"
+               placeholder="user@example.com" required>
       </div>
-      
       <div class="form-group">
-        <label for="role">Role</label>
+        <label class="form-label">Contact / Phone</label>
+        <input class="form-control" type="tel" name="contact" id="contact_field"
+               data-phone-input placeholder="+2507XXXXXXXX">
+      </div>
+    </div>
+
+    <div class="g2">
+      <div class="form-group">
+        <label class="form-label">Role <span class="text-danger">*</span></label>
         <select class="form-control" name="role" id="role" required onchange="toggleSpecialization()">
-          <option value="">Select Role</option>
+          <option value="">— Select Role —</option>
           <option value="admin">Administrator</option>
           <option value="receptionist">Receptionist</option>
           <option value="doctor">Doctor</option>
-          <option value="lab_technician">Lab Technician</option>
+          <option value="lab">Lab Technician</option>
         </select>
       </div>
-      
       <div class="form-group" id="specialization-group" style="display:none;">
-        <label for="specialization">Specialization</label>
+        <label class="form-label">Specialization <span class="text-danger">*</span></label>
         <select class="form-control" name="specialization" id="specialization">
-          <option value="generalist" selected>Generalist</option>
-          <option value="radiologist">Radiologist</option>
-          <option value="oncologist">Oncologist</option>
-          <option value="surgeon">Surgeon</option>
+          <option value="">— Select Specialization —</option>
+          <option value="Medical Oncologist">Medical Oncologist</option>
+          <option value="Surgical Oncologist">Surgical Oncologist</option>
+          <option value="Hematologist / Oncologist">Hematologist / Oncologist</option>
+          <option value="Gynecologic Oncologist">Gynecologic Oncologist</option>
+          <option value="Neuro-Oncologist">Neuro-Oncologist</option>
+          <option value="Pediatric Oncologist">Pediatric Oncologist</option>
+          <option value="Thoracic Oncologist">Thoracic Oncologist</option>
+          <option value="Urologic Oncologist">Urologic Oncologist</option>
+          <option value="Geriatric Oncologist">Geriatric Oncologist</option>
+          <option value="Pathologist">Pathologist</option>
+          <option value="Radiologist">Radiologist</option>
+          <option value="Palliative Care Specialist">Palliative Care Specialist</option>
+          <option value="Interventional Oncologist">Interventional Oncologist</option>
         </select>
       </div>
-      
-      <div class="form-group">
-        <label for="password">Password <span class="text-danger">*</span></label>
-        <input class="form-control" type="password" name="password" id="password"
-               placeholder="Enter password (min 6 characters)" required>
-      </div>
-      
-      <button type="submit" class="btn btn-primary btn-block">
-        <i class="fa-solid fa-save"></i> <span id="submit-btn-text">Create User</span>
-      </button>
-    </form>
-  </div>
+    </div>
 
+    <div class="form-group">
+      <label class="form-label" id="password-label">Password <span class="text-danger">*</span></label>
+      <input class="form-control" type="password" name="password" id="password"
+             placeholder="Minimum 6 characters">
+      <div class="fs-12 text-dim mt-4" id="password-hint" style="display:none;">
+        Leave blank to keep current password
+      </div>
+    </div>
+
+    <div class="d-flex gap-md mt-md">
+      <button type="submit" class="btn btn-primary">
+        <i class="fa-solid fa-floppy-disk"></i> <span id="submit-btn-text">Create User</span>
+      </button>
+      <button type="button" class="btn btn-secondary" onclick="hideForm()">Cancel</button>
+    </div>
+  </form>
 </div>
 
+{% block scripts %}
 <script>
+const CREATE_URL = "{{ url_for('create_user') }}";
+
 function showCreateForm() {
-  document.getElementById('user-form-card').style.display = 'block';
+  const card = document.getElementById('user-form-card');
   document.getElementById('form-title').innerHTML = '<i class="fa-solid fa-user-plus"></i> Create New User';
   document.getElementById('form-action').value = 'create';
   document.getElementById('submit-btn-text').textContent = 'Create User';
+  document.getElementById('user-form').action = CREATE_URL;
   document.getElementById('user-form').reset();
+  document.getElementById('edit-user-id').value = '';
+  document.getElementById('password-label').innerHTML = 'Password <span class="text-danger">*</span>';
+  document.getElementById('password-hint').style.display = 'none';
+  document.getElementById('password').required = true;
+  toggleSpecialization();
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function hideForm() {
@@ -139,45 +195,69 @@ function hideForm() {
 }
 
 function toggleSpecialization() {
-  const roleSelect = document.getElementById('role');
-  const specGroup = document.getElementById('specialization-group');
-  if (roleSelect && specGroup) {
-    specGroup.style.display = roleSelect.value === 'doctor' ? 'block' : 'none';
+  const role = document.getElementById('role').value;
+  const grp  = document.getElementById('specialization-group');
+  const sel  = document.getElementById('specialization');
+  if (grp) {
+    grp.style.display = role === 'doctor' ? '' : 'none';
+    if (sel) sel.required = role === 'doctor';
   }
 }
 
 function editUser(userId) {
-  // Load user data and populate form
-  fetch(`/admin/users/${userId}/edit`)
-    .then(response => response.text())
+  const editUrl = `/admin/users/${userId}/edit`;
+  document.getElementById('user-form').action = editUrl;
+  document.getElementById('form-title').innerHTML = '<i class="fa-solid fa-pen"></i> Edit User';
+  document.getElementById('form-action').value = 'edit';
+  document.getElementById('submit-btn-text').textContent = 'Save Changes';
+  document.getElementById('edit-user-id').value = userId;
+  document.getElementById('password-label').textContent = 'New Password';
+  document.getElementById('password-hint').style.display = '';
+  document.getElementById('password').required = false;
+  document.getElementById('password').value = '';
+
+  const card = document.getElementById('user-form-card');
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Pre-fill form from server
+  fetch(editUrl)
+    .then(r => r.text())
     .then(html => {
-      // Parse user data from response and populate form
-      document.getElementById('user-form-card').style.display = 'block';
-      document.getElementById('form-title').innerHTML = '<i class="fa-solid fa-edit"></i> Edit User';
-      document.getElementById('form-action').value = 'edit';
-      document.getElementById('submit-btn-text').textContent = 'Update User';
-      document.getElementById('edit-user-id').value = userId;
-    });
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      ['full_name','username','email'].forEach(f => {
+        const src = doc.querySelector(`[name="${f}"]`);
+        const dst = document.getElementById(f);
+        if (src && dst) dst.value = src.value || '';
+      });
+      // Role
+      const srcRole = doc.querySelector('[name="role"]');
+      const dstRole = document.getElementById('role');
+      if (srcRole && dstRole) {
+        dstRole.value = srcRole.value || '';
+        toggleSpecialization();
+      }
+      // Specialization
+      const srcSpec = doc.querySelector('[name="specialization"]');
+      const dstSpec = document.getElementById('specialization');
+      if (srcSpec && dstSpec) dstSpec.value = srcSpec.value || '';
+    })
+    .catch(() => {});
 }
 
-function deleteUser(userId) {
-  if (confirm('Are you sure you want to delete this user?')) {
+function deleteUser(userId, name) {
+  if (confirm(`Remove ${name}? This cannot be undone.`)) {
     fetch(`/admin/users/${userId}/delete`, { method: 'POST' })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          location.reload();
-        }
-      });
+      .then(() => location.reload())
+      .catch(() => location.reload());
   }
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  const roleSelect = document.getElementById('role');
-  if (roleSelect) {
-    roleSelect.addEventListener('change', toggleSpecialization);
-    toggleSpecialization();
-  }
+  document.getElementById('user-form').action = CREATE_URL;
+  document.getElementById('role').addEventListener('change', toggleSpecialization);
+  toggleSpecialization();
 });
 </script>
+{% endblock %}
 {% endblock %}

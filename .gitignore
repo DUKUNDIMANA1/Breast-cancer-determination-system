@@ -111,3 +111,14 @@ dmypy.json
 .env.*
 .vscode/
 .qodo
+
+# Project-specific
+static/uploads/*
+!static/uploads/.gitkeep
+static/reports/*.pdf
+artifacts/model.pkl
+artifacts/scaler.pkl
+data_storage/
+*.pyc
+app_backup_*.py
+app_clean.py

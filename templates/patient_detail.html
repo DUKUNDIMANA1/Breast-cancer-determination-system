@@ -24,7 +24,6 @@
       <div><div class="il">Gender</div><div class="iv">{{ patient.gender or '—' }}</div></div>
       <div><div class="il">Contact</div><div class="iv">{{ patient.contact or '—' }}</div></div>
       <div><div class="il">Email</div><div class="iv">{{ patient.email or '—' }}</div></div>
-      <div><div class="il">Address</div><div class="iv">{{ patient.address or '—' }}</div></div>
       <div><div class="il">Province</div><div class="iv">{{ patient.province or '—' }}</div></div>
       <div><div class="il">District</div><div class="iv">{{ patient.district or '—' }}</div></div>
       <div><div class="il">Sector</div><div class="iv">{{ patient.sector or '—' }}</div></div>
@@ -63,8 +62,8 @@
 
 <!-- Lab requests -->
 <div class="card mb-16">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-    <div class="card-title" style="margin:0">🔬 Lab Requests ({{ requests|length }})</div>
+  <div class="page-header-row" style="margin-bottom:14px;">
+    <div class="sec-label" style="margin:0;border:none;padding:0"><i class="fa-solid fa-flask"></i> Lab Requests ({{ requests|length }})</div>
     {% if session.role in ('doctor','admin') %}
     <a href="{{ url_for('new_request') }}?patient_id={{ patient.patient_id }}" class="btn btn-primary btn-sm">+ New Request</a>{% endif %}
   </div>

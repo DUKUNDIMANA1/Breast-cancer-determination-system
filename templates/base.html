@@ -23,9 +23,11 @@
   </div>
   <div class="topbar-right">
     {% set uc = unread_count() %}
+    {% if session.role != 'receptionist' %}
     <a href="{{ url_for('notifications') }}" class="notif-btn" title="Notifications">
       <i class="fa-solid fa-bell"></i>{% if uc > 0 %}<span class="notif-badge">{{ uc }}</span>{% endif %}
     </a>
+    {% endif %}
     <button id="theme-toggle" class="btn btn-icon btn-secondary" title="Toggle theme">
       <i class="fa-solid fa-moon" id="theme-icon"></i>
     </button>

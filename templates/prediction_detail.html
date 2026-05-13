@@ -130,13 +130,13 @@
       {% if pred.doctor_notes %}
       <div class="divider"></div>
       <div class="il">Doctor's Notes</div>
-      <div style="background:var(--bg3);padding:10px;border-radius:8px;font-size:13px;color:var(--text2);margin-top:6px;">{{ pred.doctor_notes }}</div>{% endif %}
+      <div style="background:var(--bg-tertiary);padding:10px;border-radius:8px;font-size:13px;color:var(--text-secondary);margin-top:6px;">{{ pred.doctor_notes }}</div>{% endif %}
     </div>
     {% if lab_result and lab_result.image_annotated %}
     <div class="card mt-16">
       <div class="sec-label">🔬 Tissue Image</div>
       <div class="img-compare">
-        {% if lab_result.image_path %}<div class="img-box"><div class="img-label">Original</div><img src="/{{ lab_result.image_path }}"/></div>{% endif %}
+        {% if lab_result.image_path %}<div class="img-box"><div class="img-label">Original</div><img src="{{ url_for('serve_upload', filename=lab_result.image_path) }}" style="width:100%;height:auto;display:block;cursor:pointer;" onclick="openLightbox(this.src)"/></div>{% endif %}
         <div class="img-box"><div class="img-label">Annotated</div><img src="data:image/jpeg;base64,{{ lab_result.image_annotated }}"/></div>
       </div>
     </div>{% endif %}
@@ -145,18 +145,18 @@
     <div class="sec-label">📊 Feature Values (20)</div>
     <div class="fs-12 text-dim mb-8">Mean</div>
     <div class="feat-list mb-12">
-      {% for f in ['radius_mean','texture_mean','smoothness_mean','compactness_mean','concavity_mean','symmetry_mean','fractal_dimension_mean'] %}
-      <div class="feat-row"><span class="fn">{{ f }}</span><span class="fv">{{ "%.6f"|format(pred.features[f]) }}</span></div>{% endfor %}
+      {% for f in ['radius_mean','texture_mean','perimeter_mean','area_mean','smoothness_mean','compactness_mean','concavity_mean','concave points_mean','symmetry_mean','fractal_dimension_mean'] %}
+      <div class="feat-row"><span class="fn">{{ f }}</span><span class="fv">{{ "%.6f"|format(pred.features.get(f,0)) }}</span></div>{% endfor %}
     </div>
     <div class="fs-12 text-dim mb-8">Standard Error</div>
     <div class="feat-list mb-12">
-      {% for f in ['radius_se','texture_se','smoothness_se','compactness_se','concavity_se','concave points_se','symmetry_se','fractal_dimension_se'] %}
-      <div class="feat-row"><span class="fn">{{ f }}</span><span class="fv">{{ "%.6f"|format(pred.features[f]) }}</span></div>{% endfor %}
+      {% for f in ['radius_se','texture_se','perimeter_se','area_se','smoothness_se','compactness_se','concavity_se','concave points_se','symmetry_se','fractal_dimension_se'] %}
+      <div class="feat-row"><span class="fn">{{ f }}</span><span class="fv">{{ "%.6f"|format(pred.features.get(f,0)) }}</span></div>{% endfor %}
     </div>
     <div class="fs-12 text-dim mb-8">Worst</div>
     <div class="feat-list">
-      {% for f in ['smoothness_worst','compactness_worst','concavity_worst','symmetry_worst','fractal_dimension_worst'] %}
-      <div class="feat-row"><span class="fn">{{ f }}</span><span class="fv">{{ "%.6f"|format(pred.features[f]) }}</span></div>{% endfor %}
+      {% for f in ['radius_worst','texture_worst','perimeter_worst','area_worst','smoothness_worst','compactness_worst','concavity_worst','concave points_worst','symmetry_worst','fractal_dimension_worst'] %}
+      <div class="feat-row"><span class="fn">{{ f }}</span><span class="fv">{{ "%.6f"|format(pred.features.get(f,0)) }}</span></div>{% endfor %}
     </div>
     {% if session.role in ('admin','doctor') %}
     <div class="divider"></div>

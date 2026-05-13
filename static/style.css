@@ -1833,7 +1833,107 @@ select.form-control option {
   }
 }
 
-/* ===== ANIMATIONS ===== */
+/* ===== MISSING UTILITY CLASSES ===== */
+
+/* Notification items */
+.notif-item {
+  padding: 13px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+}
+.notif-unread {
+  background: rgba(0, 132, 255, 0.07);
+  border-color: rgba(0, 132, 255, 0.2);
+}
+
+/* Feature list (prediction detail) */
+.feat-list { display: flex; flex-direction: column; gap: 4px; }
+.feat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  font-size: var(--font-size-sm);
+}
+.feat-row:hover { background: var(--surface-secondary); }
+.fn { color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+.fv { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-primary); }
+
+/* Result banner (prediction detail) */
+.result-banner {
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-lg);
+  border: 1px solid;
+  text-align: center;
+}
+.result-banner.mal {
+  background: rgba(255, 77, 109, 0.08);
+  border-color: rgba(255, 77, 109, 0.3);
+}
+.result-banner.ben {
+  background: rgba(0, 229, 176, 0.08);
+  border-color: rgba(0, 229, 176, 0.3);
+}
+.result-label {
+  font-family: 'DM Serif Display', serif;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.result-label.mal { color: var(--danger); }
+.result-label.ben { color: var(--success); }
+
+/* Malignant / Benign badges */
+.badge-mal {
+  background: rgba(255, 77, 109, 0.14);
+  color: var(--danger);
+  border-color: rgba(255, 77, 109, 0.3);
+}
+.badge-ben {
+  background: rgba(0, 229, 176, 0.12);
+  color: var(--success);
+  border-color: rgba(0, 229, 176, 0.25);
+}
+
+/* Search bar */
+.search-bar {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+/* Confidence bar (result banner) */
+.conf-bar {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: var(--spacing-sm) 0;
+}
+.conf-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+.conf-fill.mal { background: var(--danger); }
+.conf-fill.ben { background: var(--success); }
+
+/* Page header (h1 inside page-header-row) */
+.page-header { font-family: 'DM Serif Display', serif; font-size: 27px; color: var(--text-primary); }
+
+/* Card title used as section label */
+.card-title {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+
+/* ===== RWANDA ADDRESS WIDGET ===== */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -2666,3 +2766,118 @@ select.form-control option {
   .card { box-shadow: none; border: 1px solid #ccc; }
   body { background: white; color: black; }
 }
+
+/* ===== CHAIN OF CUSTODY WIDGET ===== */
+.chain {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.chain-step {
+  flex: 1;
+  min-width: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--spacing-md) var(--spacing-sm);
+  border-right: 1px solid var(--border-light);
+}
+.chain-step:last-child { border-right: none; }
+.chain-step.done  { background: rgba(0,229,176,0.05); }
+.chain-step.pending { background: var(--bg-tertiary); opacity: 0.7; }
+.cs-num  { font-size: 10px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.cs-role { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.cs-status { font-size: 11px; font-weight: 600; }
+
+/* ===== BADGE STATUS VARIANTS ===== */
+.badge-pending { background: rgba(255,179,71,0.12); color: var(--warning); border-color: rgba(255,179,71,0.3); }
+.badge-ready   { background: rgba(0,194,255,0.12);  color: var(--accent-primary); border-color: rgba(0,194,255,0.25); }
+.badge-done    { background: rgba(0,229,176,0.12);  color: var(--success); border-color: rgba(0,229,176,0.25); }
+
+/* ===== UPLOAD ZONE ===== */
+.upload-zone {
+  border: 2px dashed var(--border-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-2xl);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--transition-base), background var(--transition-base);
+  position: relative;
+}
+.upload-zone:hover, .upload-zone.drag {
+  border-color: var(--accent-primary);
+  background: rgba(0,194,255,0.04);
+}
+.upload-zone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+/* ===== NOTIFICATION BADGE (topbar) ===== */
+.notif-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 16px;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  text-decoration: none;
+}
+.notif-btn:hover { color: var(--accent-primary); background: rgba(0,194,255,0.08); }
+.notif-badge {
+  position: absolute;
+  top: 2px; right: 2px;
+  background: var(--danger);
+  color: white;
+  border-radius: 50%;
+  width: 16px; height: 16px;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* ===== SIGNIN ACCOUNTS TABLE MOBILE ===== */
+@media (max-width: 480px) {
+  .account-row {
+    grid-template-columns: 1fr 1fr !important;
+    font-size: 11px;
+  }
+  .account-row > *:last-child { display: none; } /* hide password column */
+  .auth-box { padding: var(--spacing-lg) var(--spacing-md); }
+  .auth-wrap { padding: var(--spacing-md); }
+}
+
+/* ===== FLEX WRAP FIXES ===== */
+.d-flex { flex-wrap: wrap; }
+.d-flex.gap-md { gap: var(--spacing-md); }
+.d-flex.gap-sm { gap: var(--spacing-sm); }
+
+/* Patient detail inline flex header */
+@media (max-width: 640px) {
+  [style*="display:flex"][style*="justify-content:space-between"],
+  [style*="display: flex"][style*="justify-content: space-between"] {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: var(--spacing-sm);
+  }
+}
+
+/* ===== REVIEW RESULTS — fix broken CSS vars ===== */
+/* bg3 and text2 are not defined — map to correct vars */
+[style*="var(--bg3)"]   { background: var(--bg-tertiary) !important; }
+[style*="var(--text2)"] { color: var(--text-secondary) !important; }
+[style*="var(--border-color)"] { border-color: var(--border-primary) !important; }

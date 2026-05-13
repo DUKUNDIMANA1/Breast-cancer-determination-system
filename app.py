@@ -31,8 +31,16 @@ app = Flask(__name__,
             static_folder=os.path.join(BASE_DIR, 'static'))
 
 app.secret_key = os.environ.get('SECRET_KEY', 'breastcare-ai-secret-2024')
-app.config['UPLOAD_FOLDER']  = os.path.join(BASE_DIR, 'static', 'uploads')
-app.config['REPORTS_FOLDER'] = os.path.join(BASE_DIR, 'static', 'reports')
+
+# On Render, use /tmp for uploads (ephemeral but writable)
+# Locally, use static/uploads so images are served directly
+IS_RENDER = os.environ.get('RENDER', False)
+if IS_RENDER:
+    app.config['UPLOAD_FOLDER']  = '/tmp/uploads'
+    app.config['REPORTS_FOLDER'] = '/tmp/reports'
+else:
+    app.config['UPLOAD_FOLDER']  = os.path.join(BASE_DIR, 'static', 'uploads')
+    app.config['REPORTS_FOLDER'] = os.path.join(BASE_DIR, 'static', 'reports')
 os.makedirs(app.config['UPLOAD_FOLDER'],  exist_ok=True)
 os.makedirs(app.config['REPORTS_FOLDER'], exist_ok=True)
 
@@ -337,6 +345,7 @@ def notify_role(role, message, link=None):
 def unread_count():
     if 'user_id' not in session: return 0
     if not MONGO_OK:             return 0
+    if session.get('role') == 'receptionist': return 0  # receptionists don't receive notifications
     try:
         return col('notifications').count_documents(
             {'user_id': session['user_id'], 'is_read': False})
@@ -621,6 +630,9 @@ def signout():
 @app.route('/notifications')
 @login_required
 def notifications():
+    if session.get('role') == 'receptionist':
+        flash('Notifications are not available for your role.', 'info')
+        return redirect(url_for('dashboard'))
     notes = docs(col('notifications').find(
         {'user_id': session['user_id']}).sort('created_at', DESCENDING).limit(60))
     col('notifications').update_many(
@@ -734,6 +746,15 @@ def register_patient():
             return render_template('register_patient.html', user=cu(), patient=None, editing=False)
 
         pid = gen_pid()
+        # Build full address string from Rwanda location fields
+        province = request.form.get('province','').strip()
+        district = request.form.get('district','').strip()
+        sector   = request.form.get('sector','').strip()
+        cell     = request.form.get('cell','').strip()
+        village  = request.form.get('village','').strip()
+        addr_parts = [p for p in [province, district, sector, cell, village] if p]
+        full_address = ' / '.join(addr_parts) if addr_parts else request.form.get('address','')
+
         col('patients').insert_one({
             'patient_id':  pid,
             'full_name':   fn,
@@ -741,7 +762,7 @@ def register_patient():
             'gender':      request.form.get('gender',''),
             'contact':     contact,
             'email':       email,
-            'address':     request.form.get('address',''),
+            'address':     full_address,
             'registered_by': session['user_id'],
             'created_at':  now_str()
         })
@@ -760,6 +781,18 @@ def patient_detail(patient_id):
     p = doc(p)
     u = col('users').find_one({'_id': oid(p.get('registered_by',''))})
     p['reg_by_name'] = u['full_name'] if u else '—'
+
+    # Split stored address "Province / District / Sector / Cell / Village" into parts
+    addr = p.get('address', '') or ''
+    if '/' in addr:
+        parts = [s.strip() for s in addr.split('/')]
+        p['province'] = parts[0] if len(parts) > 0 else ''
+        p['district'] = parts[1] if len(parts) > 1 else ''
+        p['sector']   = parts[2] if len(parts) > 2 else ''
+        p['cell']     = parts[3] if len(parts) > 3 else ''
+        p['village']  = parts[4] if len(parts) > 4 else ''
+    else:
+        p['province'] = p['district'] = p['sector'] = p['cell'] = p['village'] = ''
 
     reqs = docs(col('lab_requests').find({'patient_id':patient_id}).sort('created_at',-1))
     for r in reqs:
@@ -797,13 +830,22 @@ def edit_patient(patient_id):
             flash(phone_error, 'danger')
             return render_template('register_patient.html', user=cu(), patient=p, editing=True)
 
+        # Build full address from Rwanda location fields
+        ep = request.form.get('province','').strip()
+        ed = request.form.get('district','').strip()
+        es = request.form.get('sector','').strip()
+        ec = request.form.get('cell','').strip()
+        ev = request.form.get('village','').strip()
+        eparts = [x for x in [ep, ed, es, ec, ev] if x]
+        edit_address = ' / '.join(eparts) if eparts else request.form.get('address','')
+
         col('patients').update_one({'patient_id': patient_id}, {'$set':{
             'full_name':     full_name,
             'date_of_birth': request.form.get('date_of_birth',''),
             'gender':        request.form.get('gender',''),
             'contact':       contact,
             'email':         email,
-            'address':       request.form.get('address',''),
+            'address':       edit_address,
         }})
         flash('Patient updated.','success')
         return redirect(url_for('patient_detail', patient_id=patient_id))
@@ -918,7 +960,6 @@ def upload_results(request_id):
             with open(ip,'wb') as fp: fp.write(fb)
             img_path = sn          # store filename only, not full path
             img_ann  = generate_annotated_image(fb)
-
         col('lab_results').insert_one({
             'request_id':       request_id,
             'patient_id':       req['patient_id'],
@@ -1049,9 +1090,6 @@ def review_results(request_id):
         notify_role('admin',
             f"🏥 {req['patient_name']} [{req['patient_id']}] → {lbl}{stage_str} ({confidence:.1f}%)",
             url_for('all_predictions'))
-        notify_role('receptionist',
-            f"📋 Diagnosis complete: {req['patient_name']} [{req['patient_id']}]",
-            url_for('patient_detail', patient_id=req['patient_id']))
 
         flash(f"Determination saved: {lbl}{stage_str} ({confidence:.1f}%)", 'success')
         return redirect(url_for('my_predictions'))
@@ -1150,9 +1188,6 @@ def export_pdf_all():
 @role_required('admin')
 def admin_users():
     users = docs(col('users').find({},{'password':0}))
-    # Debug: print IDs to terminal
-    for u in users:
-        print(f"[DEBUG] user id={repr(u.get('id'))} _id={repr(u.get('_id'))} username={u.get('username')}")
     return render_template('admin_users.html', user=cu(), users=users)
 
 @app.route('/admin/users/create', methods=['GET','POST'])
@@ -1217,6 +1252,8 @@ def edit_user(uid):
     if not edit_user:
         flash('User not found.','danger')
         return redirect(url_for('admin_users'))
+    
+    edit_user = doc(edit_user)  # convert _id → id
     
     if request.method == 'POST':
         full_name = request.form.get('full_name','').strip()
@@ -1320,6 +1357,13 @@ def admin_monitoring_export():
         pass
     flash('Failed to export monitoring data.','danger')
     return redirect(url_for('admin_monitoring'))
+
+# ── Serve uploaded files from /tmp on Render ──────────────────────────────────
+@app.route('/uploads/<path:filename>')
+def serve_upload(filename):
+    """Serve uploaded files — works both locally and on Render (/tmp)."""
+    from flask import send_from_directory
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # ── Rwanda Locations API ──────────────────────────────────────────────────────
 _RWANDA_DATA = None
@@ -1457,4 +1501,6 @@ BreastCare AI Team
     return render_template('admin_email_settings.html', user=cu(), settings=settings)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, port=5000, use_reloader=False)
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    app.run(host='0.0.0.0', debug=debug, port=port, use_reloader=False)

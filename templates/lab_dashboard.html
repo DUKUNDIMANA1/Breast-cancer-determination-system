@@ -1,5 +1,10 @@
 {% extends "base.html" %}{% block title %}Lab Queue{% endblock %}{% block content %}
-<div class="page-header"><h1>Lab Queue</h1><p>Process incoming diagnostic requests and upload results</p></div>
+<div class="page-header-row">
+  <div>
+    <h1 class="page-header" style="margin:0"><i class="fa-solid fa-flask"></i> Lab Queue</h1>
+    <p class="text-muted fs-13 mt-8">Process incoming diagnostic requests and upload results</p>
+  </div>
+</div>
 <div class="card mb-16">
   <div class="card-title mb-12"><i class="fa-solid fa-clock"></i> Pending Requests — Awaiting Lab Results</div>
   {% if pending %}
@@ -31,7 +36,7 @@
       <td><span class="id-pill">{{ r.patient_id }}</span></td>
       <td class="fw-700">{{ r.patient_name }}</td>
       <td class="fs-13">{{ r.request_type }}</td>
-      <td><span class="badge {{ 'badge-ready' if r.status=='results_ready' else 'badge-done' }}">{{ r.status.replace('_',' ').title() }}</span></td>
+      <td><span class="badge {{ 'badge-info' if r.status=='results_ready' else 'badge-success' }}">{{ r.status.replace('_',' ').title() }}</span></td>
       <td class="text-dim fs-13">{{ r.submitted_at[:16] }}</td>
     </tr>
     {% endfor %}
