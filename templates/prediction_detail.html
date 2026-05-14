@@ -3,7 +3,7 @@
   <div><h1 class="page-header">Prediction Detail</h1>
     <p class="text-muted fs-13 mt-8"><span class="id-pill">{{ pred.patient_id }}</span> · {{ pred.full_name }}</p></div>
   <div class="btn-group">
-    {% if session.role in ('admin','data_manager') %}<a href="{{ url_for('export_pdf_single',patient_id=pred.patient_id) }}" class="btn btn-warn btn-sm"><i class="fa-solid fa-file-pdf"></i> PDF</a>{% endif %}
+    {% if session.role == 'data_manager' %}<a href="{{ url_for('export_pdf_single',patient_id=pred.patient_id) }}" class="btn btn-warn btn-sm"><i class="fa-solid fa-file-pdf"></i> PDF</a>{% endif %}
     <a href="{{ url_for('patient_detail',patient_id=pred.patient_id) }}" class="btn btn-outline btn-sm">&larr; Patient</a>
   </div>
 </div>

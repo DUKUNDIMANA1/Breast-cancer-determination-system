@@ -31,12 +31,12 @@
     <button id="theme-toggle" class="btn btn-icon btn-secondary" title="Toggle theme">
       <i class="fa-solid fa-moon" id="theme-icon"></i>
     </button>
-    <span class="role-pill rp-{{ session.role }}">{{ session.role }}</span>
+    <span class="role-pill rp-{{ session.role }}">{{ session.role.replace('_',' ')|title }}</span>
     <div class="user-chip">
       <div class="av">{{ session.full_name[0].upper() }}</div>
       <div>
         <div class="uname">{{ session.full_name }}</div>
-        <div class="urole">{{ session.role }}</div>
+        <div class="urole">{{ session.role.replace('_',' ')|title }}</div>
       </div>
     </div>
     <a href="{{ url_for('signout') }}" class="btn btn-secondary btn-sm"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</a>
@@ -73,7 +73,7 @@
       <span class="ni"><i class="fa-solid fa-flask"></i></span><span class="nav-text">Lab Queue</span></a>
     {% endif %}
 
-    {% if session.role in ('data_manager','admin') %}
+    {% if session.role == 'data_manager' %}
     <div class="nav-sec">Data Management</div>
     <a href="{{ url_for('all_predictions') }}" class="nav-item {% if request.endpoint=='all_predictions' %}active{% endif %}">
       <span class="ni"><i class="fa-solid fa-chart-pie"></i></span><span class="nav-text">Patient Reports</span></a>
@@ -89,9 +89,6 @@
       <span class="ni"><i class="fa-solid fa-user-gear"></i></span><span class="nav-text">Manage Users</span></a>
     <a href="{{ url_for('admin_monitoring') }}" class="nav-item {% if request.endpoint=='admin_monitoring' %}active{% endif %}">
       <span class="ni"><i class="fa-solid fa-chart-line"></i></span><span class="nav-text">System Monitoring</span></a>
-    <!-- Email Settings link removed as the route does not exist -->
-    <a href="{{ url_for('export_pdf_all') }}" class="nav-item" target="_blank">
-      <span class="ni"><i class="fa-solid fa-file-export"></i></span><span class="nav-text">Export All PDF</span></a>
     {% endif %}
 
     <div class="sidebar-footer">

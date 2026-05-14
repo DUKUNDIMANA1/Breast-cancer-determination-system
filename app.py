@@ -86,9 +86,9 @@ def connect_mongodb():
                 # Atlas / SRV — no directConnection, no socketKeepAlive (removed in newer PyMongo)
                 current_client = MongoClient(
                     uri,
-                    serverSelectionTimeoutMS=15000,
-                    connectTimeoutMS=15000,
-                    socketTimeoutMS=15000,
+                    serverSelectionTimeoutMS=30000,
+                    connectTimeoutMS=30000,
+                    socketTimeoutMS=30000,
                     retryWrites=True,
                     retryReads=True,
                     maxPoolSize=50,
@@ -148,47 +148,36 @@ def connect_mongodb():
         MONGO_ERROR = error_msg
         return False
 
-# Initialize MongoDB connection (Windows-compatible, direct call)
+# Start MongoDB connection in background — don't block app startup
 import threading
 
-def _connect_with_timeout(timeout_seconds=30):
-    """Run connect_mongodb() in a background thread with a timeout."""
-    result_holder = [False]
-    exc_holder = [None]
+def _connect_background():
+    """Connect to MongoDB in background thread — retries until success."""
+    import time
+    for attempt in range(5):
+        if connect_mongodb():
+            print(f"[BreastCare AI] [OK] MongoDB connected (attempt {attempt+1})")
+            return
+        print(f"[BreastCare AI] [WARN] MongoDB attempt {attempt+1} failed, retrying in 5s...")
+        time.sleep(5)
+    print("[BreastCare AI] [ERROR] All MongoDB connection attempts failed.")
 
-    def _target():
-        try:
-            result_holder[0] = connect_mongodb()
-        except Exception as e:
-            exc_holder[0] = e
-
-    t = threading.Thread(target=_target, daemon=True)
-    t.start()
-    t.join(timeout=timeout_seconds)
-
-    if t.is_alive():
-        global MONGO_OK, MONGO_ERROR
-        MONGO_OK = False
-        MONGO_ERROR = "Connection timed out"
-        print("[BreastCare AI] [ERROR] MongoDB connection timed out after 30 seconds.")
-    elif exc_holder[0]:
-        print(f"[BreastCare AI] [ERROR] Unexpected error: {exc_holder[0]}")
-
-_connect_with_timeout(30)
-print(f"[BreastCare AI] MONGO_OK={MONGO_OK}, MONGO_ERROR={MONGO_ERROR}")
+_bg_thread = threading.Thread(target=_connect_background, daemon=True)
+_bg_thread.start()
+print("[BreastCare AI] MongoDB connecting in background...")
 
 # MongoDB collections
 def col(name):
-    """Get a MongoDB collection, with reconnection attempt."""
+    """Get a MongoDB collection — waits up to 45s for background connection."""
     global db, client
-    
     if db is None:
-        # Try to reconnect
-        if connect_mongodb():
-            print(f"[BreastCare AI] [INFO] Reconnected to MongoDB Atlas")
-        else:
+        # Wait for background thread to finish (up to 45 seconds)
+        _bg_thread.join(timeout=45)
+        if db is None:
+            # Last attempt
+            connect_mongodb()
+        if db is None:
             raise RuntimeError("MongoDB is not connected. Please check your Atlas URI in .env")
-    
     return db[name]
 
 # ── Features ──────────────────────────────────────────────────────────────────
@@ -425,7 +414,9 @@ def index():
 def signin():
     if 'user_id' in session: return redirect(url_for('dashboard'))
     if request.method == 'POST':
-        # Check if MongoDB is connected
+        # Try to reconnect if not connected (waits up to 45s via col())
+        if not MONGO_OK:
+            connect_mongodb()
         if not MONGO_OK:
             flash('Database connection error. Please check your MongoDB connection and try again.', 'danger')
             return render_template('signin.html', mongo_ok=MONGO_OK)
@@ -644,14 +635,28 @@ def signout():
 
 @app.route('/change-password', methods=['GET','POST'])
 def change_password():
-    """Force password change on first login."""
-    # Must be logged in to change password
+    """Force password change — requires strong password."""
     if 'user_id' not in session:
         return redirect(url_for('signin'))
+
+    def validate_strong_password(pw):
+        """Return error message or None if valid."""
+        if len(pw) < 6:
+            return 'Password must be at least 6 characters.'
+        if not re.search(r'[A-Z]', pw):
+            return 'Password must contain at least one uppercase letter (A-Z).'
+        if not re.search(r'[a-z]', pw):
+            return 'Password must contain at least one lowercase letter (a-z).'
+        if not re.search(r'\d', pw):
+            return 'Password must contain at least one number (0-9).'
+        if not re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', pw):
+            return 'Password must contain at least one symbol (!@#$%^&* etc.).'
+        return None
+
     if request.method == 'POST':
-        current_pw  = request.form.get('current_password','').strip()
-        new_pw      = request.form.get('new_password','').strip()
-        confirm_pw  = request.form.get('confirm_password','').strip()
+        current_pw = request.form.get('current_password','').strip()
+        new_pw     = request.form.get('new_password','').strip()
+        confirm_pw = request.form.get('confirm_password','').strip()
 
         if not all([current_pw, new_pw, confirm_pw]):
             flash('All fields are required.', 'danger')
@@ -663,16 +668,17 @@ def change_password():
             flash('Current password is incorrect.', 'danger')
             return render_template('change_password.html', user=cu())
 
-        if len(new_pw) < 6:
-            flash('New password must be at least 6 characters.', 'danger')
+        if new_pw == current_pw:
+            flash('New password must be different from your current password.', 'danger')
             return render_template('change_password.html', user=cu())
 
         if new_pw != confirm_pw:
             flash('New passwords do not match.', 'danger')
             return render_template('change_password.html', user=cu())
 
-        if new_pw == current_pw:
-            flash('New password must be different from your current password.', 'danger')
+        pw_error = validate_strong_password(new_pw)
+        if pw_error:
+            flash(pw_error, 'danger')
             return render_template('change_password.html', user=cu())
 
         # Update password and clear the must_change flag
@@ -769,6 +775,23 @@ def dashboard():
             d['patient_name'] = pt['full_name'] if pt else '—'
             ready.append(d)
         data['ready_list'] = ready
+
+    elif role == 'data_manager':
+        data['total_patients']    = col('patients').count_documents({})
+        data['total_predictions'] = col('predictions').count_documents({})
+        data['malignant']         = col('predictions').count_documents({'result': 1})
+        data['benign']            = col('predictions').count_documents({'result': 0})
+        # Recent predictions for download
+        raw = list(col('predictions').find().sort('created_at', -1).limit(10))
+        recent = []
+        for r in raw:
+            d = doc(r)
+            pt = col('patients').find_one({'patient_id': r['patient_id']})
+            dr = col('users').find_one({'_id': oid(r.get('determined_by',''))})
+            d['full_name']   = pt['full_name'] if pt else '—'
+            d['doctor_name'] = dr['full_name'] if dr else '—'
+            recent.append(d)
+        data['recent_predictions'] = recent
 
     return render_template('dashboard.html', user=cu(), **data)
 
@@ -1193,7 +1216,7 @@ def my_predictions():
     return render_template('my_predictions.html', user=cu(), predictions=rows, q=q, is_admin=False)
 
 @app.route('/predictions/all')
-@role_required('admin')
+@role_required('admin', 'data_manager')
 def all_predictions():
     q   = request.args.get('q','').strip()
     raw = list(col('predictions').find().sort('created_at',-1))
@@ -1247,7 +1270,7 @@ def delete_prediction(pred_id):
 
 # ── PDF Export ─────────────────────────────────────────────────────────────────
 @app.route('/export/pdf/<patient_id>')
-@role_required('admin')
+@role_required('data_manager')
 def export_pdf_single(patient_id):
     from src.services.pdf_generator import generate_single_pdf
     path = generate_single_pdf(patient_id)
@@ -1259,7 +1282,7 @@ def export_pdf_single(patient_id):
                      mimetype='application/pdf')
 
 @app.route('/export/pdf/all')
-@role_required('admin')
+@role_required('data_manager')
 def export_pdf_all():
     from src.services.pdf_generator import generate_all_pdf
     return send_file(generate_all_pdf(), as_attachment=True,

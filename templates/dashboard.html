@@ -196,5 +196,55 @@
   </table></div>
   {% else %}<div class="empty"><div class="ei"><i class="fa-solid fa-microscope"></i></div><p>No results waiting for review.</p></div>{% endif %}
 </div>
+
+{# ── DATA MANAGER ── #}
+{% elif session.role == 'data_manager' %}
+<div class="g4 mb-16">
+  <div class="stat-card"><div class="stat-label">Total Patients</div><div class="stat-value text-accent">{{ total_patients }}</div></div>
+  <div class="stat-card"><div class="stat-label">Total Predictions</div><div class="stat-value text-accent">{{ total_predictions }}</div></div>
+  <div class="stat-card"><div class="stat-label">Malignant</div><div class="stat-value text-danger">{{ malignant }}</div></div>
+  <div class="stat-card"><div class="stat-label">Benign</div><div class="stat-value text-success">{{ benign }}</div></div>
+</div>
+
+<div class="card mb-16">
+  <div class="page-header-row" style="margin-bottom:14px;">
+    <div class="sec-label" style="margin:0;border:none;padding:0"><i class="fa-solid fa-file-export"></i> Export Reports</div>
+  </div>
+  <div class="d-flex gap-md flex-wrap">
+    <a href="{{ url_for('export_pdf_all') }}" class="btn btn-warn">
+      <i class="fa-solid fa-file-export"></i> Export All Patients PDF
+    </a>
+    <a href="{{ url_for('all_predictions') }}" class="btn btn-outline">
+      <i class="fa-solid fa-list"></i> View All Predictions
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="sec-label"><i class="fa-solid fa-clock-rotate-left"></i> Recent Diagnoses</div>
+  {% if recent_predictions %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Patient ID</th><th>Name</th><th>Result</th><th>Stage</th><th>Doctor</th><th>Date</th><th></th></tr></thead>
+    <tbody>
+    {% for p in recent_predictions %}
+    <tr>
+      <td><span class="id-pill">{{ p.patient_id }}</span></td>
+      <td class="fw-700">{{ p.full_name }}</td>
+      <td><span class="badge {{ 'badge-mal' if p.result==1 else 'badge-ben' }}">{{ 'Malignant' if p.result==1 else 'Benign' }}</span></td>
+      <td class="fs-13">{{ p.stage or '—' }}</td>
+      <td class="text-muted fs-13">{{ p.doctor_name or '—' }}</td>
+      <td class="text-dim fs-13">{{ p.created_at[:16] }}</td>
+      <td>
+        <a href="{{ url_for('export_pdf_single', patient_id=p.patient_id) }}" class="btn btn-warn btn-sm btn-icon" title="Download PDF">
+          <i class="fa-solid fa-file-pdf"></i>
+        </a>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty"><div class="ei"><i class="fa-solid fa-file-pdf"></i></div><p>No predictions yet.</p></div>{% endif %}
+</div>
+
 {% endif %}
 {% endblock %}
