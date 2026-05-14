@@ -360,6 +360,7 @@ def seed_users():
             col('users').insert_one({
                 'full_name': full_name, 'email': email, 'contact': contact,
                 'username': username,   'password': password, 'role': role,
+                'must_change_password': True,
                 'created_at': now_str()
             })
 
@@ -367,6 +368,24 @@ try:
     seed_users()
 except Exception as e:
     print(f"[BreastCare AI] Seed skipped: {e}")
+
+def backfill_must_change_password():
+    """Mark all existing users who don't have must_change_password set."""
+    if not MONGO_OK: return
+    try:
+        result = col('users').update_many(
+            {'must_change_password': {'$exists': False}},
+            {'$set': {'must_change_password': True}}
+        )
+        if result.modified_count > 0:
+            print(f"[BreastCare AI] Marked {result.modified_count} existing user(s) to change password on next login.")
+    except Exception as e:
+        print(f"[BreastCare AI] Backfill skipped: {e}")
+
+try:
+    backfill_must_change_password()
+except Exception as e:
+    print(f"[BreastCare AI] Backfill error: {e}")
 
 # ── Auth decorators ───────────────────────────────────────────────────────────
 def login_required(f):
@@ -429,7 +448,7 @@ def signin():
                 u = doc(u)
                 session.update({'user_id': u['id'], 'username': u['username'],
                                 'full_name': u['full_name'], 'role': u['role']})
-                # Check if user must change their default password
+                # Check DB directly for must_change_password flag
                 raw_u = col('users').find_one({'_id': oid(u['id'])})
                 if raw_u and raw_u.get('must_change_password', False):
                     session['must_change_password'] = True
