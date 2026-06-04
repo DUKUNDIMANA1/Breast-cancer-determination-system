@@ -1186,10 +1186,10 @@ def api_extract_features():
         image_bytes = f.read()
 
         # Validate image before extracting features
-        valid, confidence, reason = is_medical_image(image_bytes, strict=False)
+        valid, confidence, reason = is_medical_image(image_bytes, strict=True)
         if not valid:
             return jsonify({
-                'error': f'Invalid image: {reason} Please upload a histology or FNA tissue slide image.',
+                'error': f'Image rejected: {reason} Only H&E stained histology or FNA tissue slide images are accepted.',
                 'validation_failed': True,
                 'confidence': round(confidence, 2)
             }), 400

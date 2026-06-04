@@ -90,7 +90,6 @@ def is_medical_image(image_bytes, strict=False):
         else:
             # Must have H&E color + at least one other criterion
             is_valid = has_he_color and (has_texture or has_nuclei) and score >= 0.55
-
         if not is_valid:
             reasons = []
             if not has_he_color:
