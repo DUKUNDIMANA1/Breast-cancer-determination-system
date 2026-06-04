@@ -250,44 +250,31 @@ def is_valid_email(email):
 
 def normalize_phone_number(raw_phone):
     """
-    Validate and normalize phone to E.164 format.
-    Rwanda format: +250 followed by 9 digits starting with 7
-    Total: 13 characters (+250XXXXXXXXX)
+    Validate and normalize any international phone number to E.164 format.
+    Accepts numbers from any country with a valid country code.
     """
     if not raw_phone:
         return "", None
 
     phone = raw_phone.strip()
 
-    # If user entered just 9 digits (without +250), prepend it
-    if re.match(r'^7[0-9]{8}$', phone):
-        phone = '+250' + phone
-
-    # If user entered 0 prefix (local format 07XXXXXXXX)
-    if re.match(r'^07[0-9]{8}$', phone):
-        phone = '+250' + phone[1:]
-
     if not phone.startswith('+'):
-        return None, "Phone must start with '+' or enter 9 digits starting with 7 (e.g. 788000001)."
+        return None, "Phone number must include country code starting with '+' (e.g. +250788000001)."
 
     digit_count = sum(ch.isdigit() for ch in phone)
-
-    # Rwanda: +250 + 9 digits = 12 digits total
-    if not phone.startswith('+250'):
-        return None, "Rwanda phone must start with +250 followed by 9 digits (e.g. +250788000001)."
-
-    local = phone[4:]  # strip +250
-    if not re.match(r'^7[0-9]{8}$', local):
-        return None, f"After +250, enter exactly 9 digits starting with 7 (e.g. +250788000001). Got: '{local}'"
+    if digit_count < 7:
+        return None, "Phone number is too short. Include country code (e.g. +250788000001)."
+    if digit_count > 15:
+        return None, "Phone number is too long."
 
     try:
         parsed = phonenumbers.parse(phone, None)
         if not phonenumbers.is_valid_number(parsed):
-            return None, "Invalid Rwanda phone number. Use format: +250788000001"
+            return None, "Invalid phone number. Please check the country code and number."
         normalized = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
         return normalized, None
     except phonenumbers.NumberParseException:
-        return None, "Invalid phone number. Use format: +250788000001"
+        return None, "Invalid phone number. Use international format with '+' and country code."
 
 def oid(id_str):
     """Safely convert string to ObjectId."""
