@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
 <!-- intl-tel-input (phone picker with all countries) -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/css/intlTelInput.css"/>
+<script src="https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/js/intlTelInput.min.js"></script>
 <!-- Consistent Design System -->
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 {% block extra_head %}{% endblock %}
@@ -219,14 +220,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const iti = intlTelInput(input, {
       initialCountry: 'rw',
       separateDialCode: true,
-      autoPlaceholder: 'off',       // no placeholder inside input
-      nationalMode: false,
+      autoPlaceholder: 'polite',
+      nationalMode: true,
       utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/js/utils.js'
     });
 
     // If pre-existing value (e.g. editing), set it
-    if (input.value) {
-      try { iti.setNumber(input.value); } catch(e) {}
+    const existingVal = input.value || input.getAttribute('value');
+    if (existingVal) {
+      try { iti.setNumber(existingVal); } catch(e) {}
     }
 
     // Before form submit: write full E.164 number back to input

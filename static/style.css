@@ -2938,3 +2938,130 @@ select.form-control option {
 [style*="var(--bg3)"]   { background: var(--bg-tertiary) !important; }
 [style*="var(--text2)"] { color: var(--text-secondary) !important; }
 [style*="var(--border-color)"] { border-color: var(--border-primary) !important; }
+
+/* ===== intl-tel-input overrides ===== */
+.iti {
+  width: 100%;
+  display: block;
+}
+
+.iti__tel-input,
+.iti input[type="tel"] {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  padding-left: 90px !important; /* space for flag + dial code */
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-family: 'DM Sans', sans-serif;
+  outline: none;
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  height: 42px;
+  box-sizing: border-box;
+}
+
+.iti input[type="tel"]:focus {
+  border-color: var(--accent-secondary);
+  box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.15);
+}
+
+/* Flag + dial code button */
+.iti__flag-container {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  padding: 0 6px 0 8px;
+}
+
+.iti__selected-country {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 8px;
+  background: var(--bg-tertiary);
+  border-right: 1px solid var(--border-primary);
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  gap: 6px;
+  cursor: pointer;
+}
+
+.iti__selected-country:hover {
+  background: var(--surface-secondary);
+}
+
+.iti__selected-dial-code {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.iti__arrow {
+  border-top-color: var(--text-tertiary);
+  margin-left: 4px;
+}
+
+/* Dropdown */
+.iti__country-list {
+  background: var(--surface);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  max-height: 250px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.iti__country {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.iti__country:hover,
+.iti__country.iti__highlight {
+  background: var(--bg-tertiary);
+}
+
+.iti__dial-code {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.iti__country-name {
+  color: var(--text-primary);
+}
+
+/* Search box in dropdown */
+.iti__search-input {
+  width: calc(100% - 16px);
+  margin: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.iti__search-input:focus {
+  border-color: var(--accent-secondary);
+  box-shadow: 0 0 0 2px rgba(0,132,255,0.15);
+}
+
+/* Light theme */
+html[data-theme="light"] .iti input[type="tel"],
+html[data-theme="light"] .iti__selected-country,
+html[data-theme="light"] .iti__country-list,
+html[data-theme="light"] .iti__search-input {
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
