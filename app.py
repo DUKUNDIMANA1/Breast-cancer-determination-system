@@ -1219,6 +1219,20 @@ def review_results(request_id):
             try:    adj[f] = float(request.form.get(f, feat_values.get(f,0)))
             except: adj[f] = feat_values.get(f, 0.0)
 
+        # Block prediction if all features match defaults exactly (unrelated image was uploaded)
+        defaults_matched = sum(
+            1 for k in FEATURES
+            if abs(adj.get(k, 0) - FEATURE_DEFAULTS.get(k, 0)) < 0.0001
+        )
+        if defaults_matched >= len(FEATURES) - 2:
+            flash('⚠️ Cannot run prediction: feature values appear to be defaults from an invalid image. '
+                  'Please upload a valid FNA tissue slide image and re-extract features, '
+                  'or manually enter the actual cell nucleus measurements.', 'danger')
+            return render_template('review_results.html', user=cu(),
+                                   req=req, lab_result=lab,
+                                   features=FEATURES, feat_values=feat_values,
+                                   feature_defaults=FEATURE_DEFAULTS)
+
         result, confidence = run_prediction(adj)
         stage = determine_stage(adj) if result == 1 else None
 

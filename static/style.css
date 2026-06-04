@@ -1946,6 +1946,50 @@ select.form-control option {
   letter-spacing: 0.7px;
 }
 
+/* ===== intl-tel-input dark theme overrides ===== */
+.iti { width: 100%; }
+.iti__tel-input {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-primary) !important;
+  font-size: var(--font-size-base) !important;
+  padding: var(--spacing-sm) var(--spacing-md) !important;
+  width: 100% !important;
+  outline: none !important;
+}
+.iti__tel-input:focus {
+  border-color: var(--accent-secondary) !important;
+  box-shadow: 0 0 0 3px rgba(0,132,255,0.15) !important;
+}
+.iti__tel-input::placeholder { color: var(--text-tertiary) !important; }
+.iti__flag-container {
+  background: var(--bg-tertiary) !important;
+  border-right: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-md) 0 0 var(--radius-md) !important;
+}
+.iti--separate-dial-code .iti__selected-dial-code {
+  color: var(--text-primary) !important;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.iti--separate-dial-code .iti__tel-input { padding-left: 90px !important; }
+.iti__dropdown-content {
+  background: var(--surface) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+.iti__search-input {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+  border-radius: var(--radius-sm) !important;
+}
+.iti__country { color: var(--text-primary) !important; }
+.iti__country:hover, .iti__country--highlight { background: var(--bg-tertiary) !important; }
+.iti__dial-code { color: var(--text-secondary) !important; }
+
 /* ===== RWANDA ADDRESS WIDGET ===== */
 @keyframes fadeIn {
   from {

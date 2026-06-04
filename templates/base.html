@@ -7,6 +7,8 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+<!-- intl-tel-input (phone picker with all countries) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/css/intlTelInput.css"/>
 <!-- Consistent Design System -->
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 {% block extra_head %}{% endblock %}
@@ -203,5 +205,52 @@ window.addEventListener('resize', () => {
 <script src="{{ url_for('static', filename='js/menu-toggle.js') }}"></script>
 <!-- Phone picker (custom, no CDN dependency) -->
 <script src="{{ url_for('static', filename='js/phone_picker.js') }}"></script>
+<!-- intl-tel-input JS -->
+<script src="https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/js/intlTelInput.min.js"></script>
+<script>
+// ── intl-tel-input: initialize all inputs with data-phone-input ──────────────
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof intlTelInput === 'undefined') return;
+
+  document.querySelectorAll('input[data-phone-input]').forEach(function(input) {
+    if (input.dataset.itiReady) return;
+    input.dataset.itiReady = '1';
+
+    const iti = intlTelInput(input, {
+      initialCountry: 'rw',
+      separateDialCode: true,
+      autoPlaceholder: 'off',       // no placeholder inside input
+      nationalMode: false,
+      utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@24.6.0/build/js/utils.js'
+    });
+
+    // If pre-existing value (e.g. editing), set it
+    if (input.value) {
+      try { iti.setNumber(input.value); } catch(e) {}
+    }
+
+    // Before form submit: write full E.164 number back to input
+    const form = input.closest('form');
+    if (form) {
+      form.addEventListener('submit', function() {
+        const full = iti.getNumber();
+        if (full) input.value = full;
+      });
+    }
+
+    // Live validation: enforce max 13 characters total (e.g. +250788000001)
+    input.addEventListener('input', function() {
+      // Strip non-digits from what user types in the field
+      this.value = this.value.replace(/[^0-9]/g, '');
+      // Limit local part length so total stays ≤ 13
+      const dialCode = iti.getSelectedCountryData().dialCode || '';
+      const maxLocal = 13 - 1 - dialCode.length; // -1 for '+'
+      if (this.value.length > maxLocal) {
+        this.value = this.value.slice(0, maxLocal);
+      }
+    });
+  });
+});
+</script>
 </body>
 </html>
