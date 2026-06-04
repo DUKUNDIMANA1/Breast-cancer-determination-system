@@ -18,10 +18,10 @@
         <input class="form-control" type="text" name="full_name" value="{{ patient.full_name if patient else '' }}" placeholder="e.g., Jane Mukamwezi, John Mugisha" required/>
       </div>
       <div class="g2">
-        <div class="form-group"><label class="form-label">Date of Birth <span class="text-dim">(optional)</span></label>
-          <input class="form-control" type="date" name="date_of_birth" value="{{ patient.date_of_birth if patient else '' }}"/></div>
-        <div class="form-group"><label class="form-label">Gender <span class="text-dim">(optional)</span></label>
-          <select class="form-control" name="gender">
+        <div class="form-group"><label class="form-label">Date of Birth <span class="text-danger">*</span></label>
+          <input class="form-control" type="date" name="date_of_birth" value="{{ patient.date_of_birth if patient else '' }}" required/></div>
+        <div class="form-group"><label class="form-label">Gender <span class="text-danger">*</span></label>
+          <select class="form-control" name="gender" required>
             <option value="">— Select —</option>
             {% for g in ['Female','Male','Other'] %}
             <option value="{{ g }}" {{ 'selected' if patient and patient.gender==g else '' }}>{{ g }}</option>
@@ -29,11 +29,15 @@
           </select></div>
       </div>
       <div class="form-group">
-        <label class="form-label">Contact / Phone <span class="text-dim">(optional)</span></label>
+        <label class="form-label">Contact / Phone <span class="text-danger">*</span></label>
         <input class="form-control" type="tel" name="contact" id="contact"
                data-phone-input
                value="{{ patient.contact if patient else '' }}"
-               placeholder="7XXXXXXXX"/>
+               placeholder="7XXXXXXXX" required
+               minlength="9" maxlength="9"
+               pattern="7[0-9]{8}"
+               title="Enter 9 digits starting with 7 — e.g. 788000001 (+250 is added automatically)"/>
+        <div class="fs-12 text-dim mt-4">Format: +250 followed by 9 digits starting with 7 (total 13 digits)</div>
       </div>
       <div class="form-group"><label class="form-label">Email <span class="text-dim">(optional)</span></label>
         <input class="form-control" type="email" name="email" value="{{ patient.email if patient else '' }}" placeholder="patient@email.com"/></div>
@@ -44,22 +48,22 @@
       
       <!-- Rwanda Administrative Address System -->
       <div class="form-group">
-        <label class="form-label">Province <span class="text-dim">(optional)</span></label>
-        <select class="form-control" name="province" id="province">
+        <label class="form-label">Province <span class="text-danger">*</span></label>
+        <select class="form-control" name="province" id="province" required>
           <option value="">Select Province...</option>
         </select>
       </div>
       
       <div class="g2 gap-sm">
         <div class="form-group">
-          <label class="form-label">District <span class="text-dim">(optional)</span></label>
-          <select class="form-control" name="district" id="district" disabled>
+          <label class="form-label">District <span class="text-danger">*</span></label>
+          <select class="form-control" name="district" id="district" disabled required>
             <option value="">Select District...</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Sector <span class="text-dim">(optional)</span></label>
-          <select class="form-control" name="sector" id="sector" disabled>
+          <label class="form-label">Sector <span class="text-danger">*</span></label>
+          <select class="form-control" name="sector" id="sector" disabled required>
             <option value="">Select Sector...</option>
           </select>
         </div>
@@ -67,14 +71,14 @@
       
       <div class="g2 gap-sm">
         <div class="form-group">
-          <label class="form-label">Cell <span class="text-dim">(optional)</span></label>
-          <select class="form-control" name="cell" id="cell" disabled>
+          <label class="form-label">Cell <span class="text-danger">*</span></label>
+          <select class="form-control" name="cell" id="cell" disabled required>
             <option value="">Select Cell...</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Village <span class="text-dim">(optional)</span></label>
-          <select class="form-control" name="village" id="village" disabled>
+          <label class="form-label">Village <span class="text-danger">*</span></label>
+          <select class="form-control" name="village" id="village" disabled required>
             <option value="">Select Village...</option>
           </select>
         </div>
@@ -148,11 +152,13 @@
       sel.appendChild(o);
     });
     sel.disabled = items.length === 0;
+    sel.required = items.length > 0;
   }
 
   function reset(sel, placeholder) {
     sel.innerHTML = '<option value="">' + placeholder + '</option>';
     sel.disabled = true;
+    sel.required = false;
   }
 
   // Pre-fill values when editing

@@ -251,29 +251,43 @@ def is_valid_email(email):
 def normalize_phone_number(raw_phone):
     """
     Validate and normalize phone to E.164 format.
-    Accepts international format: +250XXXXXXXXX (13 digits total including +).
+    Rwanda format: +250 followed by 9 digits starting with 7
+    Total: 13 characters (+250XXXXXXXXX)
     """
     if not raw_phone:
         return "", None
 
     phone = raw_phone.strip()
-    # Count only digits
+
+    # If user entered just 9 digits (without +250), prepend it
+    if re.match(r'^7[0-9]{8}$', phone):
+        phone = '+250' + phone
+
+    # If user entered 0 prefix (local format 07XXXXXXXX)
+    if re.match(r'^07[0-9]{8}$', phone):
+        phone = '+250' + phone[1:]
+
+    if not phone.startswith('+'):
+        return None, "Phone must start with '+' or enter 9 digits starting with 7 (e.g. 788000001)."
+
     digit_count = sum(ch.isdigit() for ch in phone)
 
-    if not phone.startswith("+"):
-        return None, "Phone number must start with '+' and include country code (e.g. +250788000001)."
+    # Rwanda: +250 + 9 digits = 12 digits total
+    if not phone.startswith('+250'):
+        return None, "Rwanda phone must start with +250 followed by 9 digits (e.g. +250788000001)."
 
-    if digit_count != 12:
-        return None, f"Phone number must have exactly 12 digits after '+' (e.g. +250788000001). You entered {digit_count} digits."
+    local = phone[4:]  # strip +250
+    if not re.match(r'^7[0-9]{8}$', local):
+        return None, f"After +250, enter exactly 9 digits starting with 7 (e.g. +250788000001). Got: '{local}'"
 
     try:
         parsed = phonenumbers.parse(phone, None)
         if not phonenumbers.is_valid_number(parsed):
-            return None, "Enter a valid phone number with country code (e.g. +250788000001)."
+            return None, "Invalid Rwanda phone number. Use format: +250788000001"
         normalized = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
         return normalized, None
     except phonenumbers.NumberParseException:
-        return None, "Enter a valid international phone number (e.g. +250788000001)."
+        return None, "Invalid phone number. Use format: +250788000001"
 
 def oid(id_str):
     """Safely convert string to ObjectId."""
@@ -849,6 +863,18 @@ def register_patient():
 
         if not fn:
             flash('Patient name required.','danger')
+            return render_template('register_patient.html', user=cu(), patient=None, editing=False)
+        if not request.form.get('date_of_birth','').strip():
+            flash('Date of birth is required.','danger')
+            return render_template('register_patient.html', user=cu(), patient=None, editing=False)
+        if not request.form.get('gender','').strip():
+            flash('Gender is required.','danger')
+            return render_template('register_patient.html', user=cu(), patient=None, editing=False)
+        if not contact_input:
+            flash('Contact / Phone is required.','danger')
+            return render_template('register_patient.html', user=cu(), patient=None, editing=False)
+        if not request.form.get('province','').strip():
+            flash('Province is required.','danger')
             return render_template('register_patient.html', user=cu(), patient=None, editing=False)
         if email and not is_valid_email(email):
             flash('Please provide a valid email address.','danger')
