@@ -654,9 +654,14 @@ def signout():
 
 @app.route('/change-password', methods=['GET','POST'])
 def change_password():
-    """Force password change — requires strong password."""
+    """Force password change — only required on first login."""
     if 'user_id' not in session:
         return redirect(url_for('signin'))
+    # If user already changed their password, redirect to dashboard
+    if not session.get('must_change_password'):
+        u = col('users').find_one({'_id': oid(session['user_id'])})
+        if not u or not u.get('must_change_password', False):
+            return redirect(url_for('dashboard'))
 
     def validate_strong_password(pw):
         """Return error message or None if valid."""
@@ -1144,23 +1149,34 @@ def api_extract_features():
     if not f or not f.filename:
         return jsonify({'error': 'No image provided'}), 400
     from src.services.image_processor_advanced import extract_features
+    from src.services.image_validator import is_medical_image
     import math
     try:
-        features = extract_features(f.read())
-        # Sanitize: replace NaN/Inf with dataset defaults, ensure no zeros for key features
+        image_bytes = f.read()
+
+        # Validate image before extracting features
+        valid, confidence, reason = is_medical_image(image_bytes, strict=False)
+        if not valid:
+            return jsonify({
+                'error': f'Invalid image: {reason} Please upload a histology or FNA tissue slide image.',
+                'validation_failed': True,
+                'confidence': round(confidence, 2)
+            }), 400
+
+        features = extract_features(image_bytes)
         extracted = {}
         for k in FEATURES:
             raw = features.get(k, FEATURE_DEFAULTS[k])
             try:
                 v = float(raw)
-                # Replace NaN, Inf, or 0 for features that should never be 0
                 if math.isnan(v) or math.isinf(v) or v == 0.0:
                     v = float(FEATURE_DEFAULTS[k])
             except (TypeError, ValueError):
                 v = float(FEATURE_DEFAULTS[k])
             extracted[k] = round(v, 6)
-        warning = features.get('validation_failed', False)
-        return jsonify({'features': extracted, 'warning': warning})
+
+        warning = confidence < 0.7
+        return jsonify({'features': extracted, 'warning': warning, 'confidence': round(confidence, 2)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

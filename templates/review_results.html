@@ -78,7 +78,12 @@
       </div>
     </div>
     {% else %}
-    <div class="alert alert-info mb-12">Review of lab-uploaded values. You may adjust any value before running the AI prediction.</div>
+    <div class="alert alert-info mb-12">
+      <i class="fa-solid fa-circle-info"></i>
+      <strong>Important:</strong> The feature values below are pre-filled from the lab upload. 
+      The doctor <strong>must review and verify all values</strong> before running the AI prediction. 
+      If an image was uploaded, values are estimates only — adjust them based on clinical judgment.
+    </div>
     {% endif %}
     <div class="sec-label" style="border:none;padding-top:0">Mean Features</div>
     <div class="feat-grid mb-12">

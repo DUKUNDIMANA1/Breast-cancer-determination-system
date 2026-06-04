@@ -149,7 +149,7 @@ function extractFeatures() {
     })
     .then(data => {
       if (data.error) {
-        status.innerHTML = '<div class="alert alert-danger"><i class="fa-solid fa-xmark"></i> ' + data.error + '</div>';
+        status.innerHTML = '<div class="alert alert-danger"><i class="fa-solid fa-xmark-circle"></i> ' + data.error + '</div>';
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-cogs"></i> Extract Features from Image';
         return;
