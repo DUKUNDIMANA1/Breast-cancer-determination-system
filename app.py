@@ -301,6 +301,24 @@ def run_prediction(feat_dict):
     c = float(max(model.predict_proba(X)[0])) * 100
     return r, c
 
+def run_prediction_with_ood(feat_dict):
+    """
+    Run prediction with OOD detection.
+    Returns (result, confidence, ood_info) where ood_info contains OOD details.
+    """
+    import pandas as pd
+    from src.services.ood_detector import check_ood
+
+    # OOD check first
+    ood_info = check_ood(feat_dict, scaler, FEATURES)
+
+    # Run model prediction regardless (doctor can still see the result with a warning)
+    X = scaler.transform(pd.DataFrame([feat_dict], columns=FEATURES))
+    r = int(model.predict(X)[0])
+    c = float(max(model.predict_proba(X)[0])) * 100
+
+    return r, c, ood_info
+
 def determine_stage(feat_dict):
     """Estimate breast cancer stage (I–IV) for MALIGNANT predictions."""
     radius      = feat_dict.get('radius_mean', 0)
@@ -1233,8 +1251,16 @@ def review_results(request_id):
                                    features=FEATURES, feat_values=feat_values,
                                    feature_defaults=FEATURE_DEFAULTS)
 
-        result, confidence = run_prediction(adj)
+        result, confidence, ood_info = run_prediction_with_ood(adj)
         stage = determine_stage(adj) if result == 1 else None
+
+        # If OOD detected, warn doctor but still allow saving with flag
+        ood_warning = ''
+        if ood_info.get('is_ood'):
+            ood_warning = (f"⚠️ OOD WARNING: {ood_info.get('reason', '')} "
+                           f"Confidence in prediction reliability: {ood_info.get('confidence', 0):.0f}%. "
+                           f"This result should be verified with additional clinical tests.")
+            flash(ood_warning, 'warning')
 
         col('predictions').insert_one({
             'patient_id':    req['patient_id'],
@@ -1244,6 +1270,10 @@ def review_results(request_id):
             'result':        result,
             'confidence':    confidence,
             'stage':         stage,
+            'ood_detected':  ood_info.get('is_ood', False),
+            'ood_distance':  ood_info.get('distance', 0),
+            'ood_threshold': ood_info.get('threshold', 0),
+            'ood_confidence':ood_info.get('confidence', 100),
             'doctor_notes':  request.form.get('doctor_notes',''),
             'determined_by': session['user_id'],
             'created_at':    now_str(),
@@ -1251,12 +1281,13 @@ def review_results(request_id):
         })
         lbl = 'MALIGNANT' if result==1 else 'BENIGN'
         stage_str = f' — {stage}' if stage else ''
+        ood_tag = ' [OOD WARNING]' if ood_info.get('is_ood') else ''
         col('lab_requests').update_one(
             {'_id': oid(request_id)},
             {'$set': {'status':'completed','updated_at': now_str()}})
 
         notify_role('admin',
-            f"🏥 {req['patient_name']} [{req['patient_id']}] → {lbl}{stage_str} ({confidence:.1f}%)",
+            f"🏥 {req['patient_name']} [{req['patient_id']}] → {lbl}{stage_str} ({confidence:.1f}%){ood_tag}",
             url_for('all_predictions'))
 
         flash(f"Determination saved: {lbl}{stage_str} ({confidence:.1f}%)", 'success')

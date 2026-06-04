@@ -31,7 +31,12 @@ def train():
     print("  Target Accuracy: 98.25%")
     print("=" * 60)
     print(f"\n[1/6] Loading and preprocessing dataset...")
-    df = pd.read_csv(CSV_PATH)
+    # Use the correct dataset filename
+    csv_path = CSV_PATH if os.path.exists(CSV_PATH) else os.path.join(PROJECT_ROOT, 'data', 'breast-cancer.csv')
+    df = pd.read_csv(csv_path)
+    # Map M→1, B→0 if needed
+    if df['diagnosis'].dtype == object:
+        df['diagnosis'] = df['diagnosis'].map({'M': 1, 'B': 0})
     X  = df[FEATURES]; y = df['diagnosis']
     print(f"      Samples: {len(df)} | Benign: {(y==0).sum()} | Malignant: {(y==1).sum()}")
 
@@ -97,6 +102,15 @@ def train():
     with open(MODEL_PATH,  'wb') as f: pickle.dump(model,  f)
     with open(SCALER_PATH, 'wb') as f: pickle.dump(scaler, f)
     print(f"\n  ✓ Saved optimized model.pkl and scaler.pkl")
+
+    # Build OOD detector from training data
+    print("\n[OOD] Building Out-of-Distribution detector...")
+    import sys
+    sys.path.insert(0, PROJECT_ROOT)
+    from src.services.ood_detector import build_ood_detector
+    build_ood_detector(X_train_s, X_train.values, FEATURES)
+    print("  ✓ OOD detector saved to artifacts/ood_detector.pkl")
+
     print("=" * 60)
     return acc
 
