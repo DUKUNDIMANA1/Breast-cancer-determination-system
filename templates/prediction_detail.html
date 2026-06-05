@@ -11,19 +11,21 @@
   <div>
     <div class="result-banner {{ 'mal' if pred.result==1 else 'ben' }} mb-16">
       <div class="fs-12 fw-700 text-dim text-uppercase letter-spacing-sm mb-4">AI Diagnosis Result</div>
-      {% if pred.ood_detected %}
+      {% if pred.cnn_used and pred.cnn_result is not none and pred.cnn_result != pred.result %}
       <div class="alert alert-warning mb-8" style="border-radius:var(--radius-md);padding:10px 14px;display:flex;align-items:flex-start;gap:10px;">
         <i class="fa-solid fa-triangle-exclamation" style="margin-top:2px;flex-shrink:0;"></i>
         <div>
-          <strong>Out-of-Distribution Warning</strong><br>
-          <span class="fs-12">The input features are statistically unusual compared to the training data
-          (distance={{ pred.ood_distance|round(1) }}, threshold={{ pred.ood_threshold|round(1) }}).
-          This prediction may be unreliable. Please verify with additional clinical tests.</span>
+          <strong>CNN vs Feature Model Disagreement</strong><br>
+          <span class="fs-12">
+            Feature model: <strong>{{ 'MALIGNANT' if pred.result==1 else 'BENIGN' }}</strong> ({{ pred.confidence|round(1) }}%)
+            &nbsp;|&nbsp;
+            CNN image model: <strong>{{ 'MALIGNANT' if pred.cnn_result==1 else 'BENIGN' }}</strong> ({{ pred.cnn_confidence|round(1) }}%).
+            Consider both results and verify with additional clinical tests.
+          </span>
         </div>
       </div>
       {% endif %}
       <div class="result-label {{ 'mal' if pred.result==1 else 'ben' }}">
-        {% if pred.ood_detected %}<span class="fs-13 text-dim" style="display:block;margin-bottom:4px;">⚠️ Uncertain</span>{% endif %}
         {{ 'MALIGNANT' if pred.result==1 else 'BENIGN' }}
       </div>
       <div class="font-mono confidence-{{ 'mal' if pred.result==1 else 'ben' }}">Stage: {{ pred.stage or ('Benign' if pred.result==0 else 'Unknown') }}</div>
@@ -143,8 +145,20 @@
         {% if pred.result==1 and pred.stage %}
         <div><div class="il">Cancer Stage</div><div class="iv fw-700">{{ pred.stage }}</div></div>
         {% endif %}
-        {% if pred.ood_detected %}
-        <div><div class="il">OOD Status</div><div class="iv text-warn fw-700"><i class="fa-solid fa-triangle-exclamation"></i> Uncertain (dist={{ pred.ood_distance }})</div></div>
+        {% if pred.cnn_used %}
+        <div><div class="il">CNN Image Model</div>
+          <div class="iv">
+            <span class="badge {{ 'badge-mal' if pred.cnn_result==1 else 'badge-ben' }}">
+              {{ 'Malignant' if pred.cnn_result==1 else 'Benign' }}
+            </span>
+            &nbsp;{{ pred.cnn_confidence|round(1) }}%
+            {% if pred.cnn_result != pred.result %}
+              <span class="badge" style="background:var(--warn-bg,#7c5c00);color:#ffd600;margin-left:4px;">⚠ Disagrees</span>
+            {% else %}
+              <span class="badge" style="background:var(--success-bg,#003322);color:#00e676;margin-left:4px;">✓ Agrees</span>
+            {% endif %}
+          </div>
+        </div>
         {% endif %}
       {% if pred.doctor_notes %}
       <div class="divider"></div>

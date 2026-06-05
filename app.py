@@ -237,6 +237,21 @@ def _load_model():
 
 model, scaler = _load_model()
 
+# ── Pre-load CNN at startup (background thread, non-blocking) ─────────────────
+def _preload_cnn():
+    try:
+        from src.services.cnn_predictor import load_cnn
+        m = load_cnn()
+        if m is not None:
+            print("[BreastCare AI] CNN model pre-loaded successfully.")
+        else:
+            print("[BreastCare AI] CNN model not found — validation will use heuristic fallback.")
+    except Exception as e:
+        print(f"[BreastCare AI] CNN pre-load skipped: {e}")
+
+import threading
+threading.Thread(target=_preload_cnn, daemon=True).start()
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def hash_pw(p):  return hashlib.sha256(p.encode()).hexdigest()
 def gen_pid():   return f"BC-{datetime.now().strftime('%Y%m')}-{secrets.token_hex(3).upper()}"
@@ -300,24 +315,6 @@ def run_prediction(feat_dict):
     r = int(model.predict(X)[0])
     c = float(max(model.predict_proba(X)[0])) * 100
     return r, c
-
-def run_prediction_with_ood(feat_dict):
-    """
-    Run prediction with OOD detection.
-    Returns (result, confidence, ood_info) where ood_info contains OOD details.
-    """
-    import pandas as pd
-    from src.services.ood_detector import check_ood
-
-    # OOD check first
-    ood_info = check_ood(feat_dict, scaler, FEATURES)
-
-    # Run model prediction regardless (doctor can still see the result with a warning)
-    X = scaler.transform(pd.DataFrame([feat_dict], columns=FEATURES))
-    r = int(model.predict(X)[0])
-    c = float(max(model.predict_proba(X)[0])) * 100
-
-    return r, c, ood_info
 
 def determine_stage(feat_dict):
     """Estimate breast cancer stage (I–IV) for MALIGNANT predictions."""
@@ -1112,21 +1109,44 @@ def upload_results(request_id):
             except: feats[f] = FEATURE_DEFAULTS[f]
 
         img_path = None; img_ann = None
+        cnn_validation_meta = {}
         img_file = request.files.get('image')
         if img_file and img_file.filename:
             from src.services.image_processor_advanced import generate_annotated_image
+            from src.services.cnn_predictor import cnn_validate_image
             fb = img_file.read()
+
+            # ── CNN gate on direct-submit path ────────────────────────────────
+            val = cnn_validate_image(fb)
+            if not val['is_valid']:
+                method = "CNN" if val['cnn_used'] else "heuristic"
+                flash(
+                    f'❌ Image rejected ({method} validation, '
+                    f'confidence={val["confidence"]:.0f}%): {val["reason"]}',
+                    'danger'
+                )
+                flash('Please upload a valid breast tissue (FNA/H&E stained) image.', 'danger')
+                return redirect(url_for('upload_results', request_id=request_id))
+
             sn = f"{req['patient_id']}_{request_id}.jpg"
             ip = os.path.join(app.config['UPLOAD_FOLDER'], sn)
             with open(ip,'wb') as fp: fp.write(fb)
-            img_path = sn          # store filename only, not full path
+            img_path = sn
             img_ann  = generate_annotated_image(fb)
+            cnn_validation_meta = {
+                'cnn_valid':      val['is_valid'],
+                'cnn_confidence': val['confidence'],
+                'cnn_used':       val['cnn_used'],
+                'cnn_reason':     val['reason'],
+            }
+
         col('lab_results').insert_one({
             'request_id':       request_id,
             'patient_id':       req['patient_id'],
             'features':         feats,
             'image_path':       img_path,
             'image_annotated':  img_ann,
+            'cnn_validation':   cnn_validation_meta,
             'lab_notes':        request.form.get('lab_notes',''),
             'submitted_by':     session['user_id'],
             'submitted_at':     now_str()
@@ -1157,16 +1177,34 @@ def lab_image_extract():
         flash('Select an image.','danger')
         return redirect(url_for('upload_results', request_id=rid))
     from src.services.image_processor_advanced import extract_features
+    from src.services.cnn_predictor import cnn_validate_image
+
     try:
-        features = extract_features(f.read())
+        image_bytes = f.read()
+
+        # ── CNN image validation ──────────────────────────────────────────────
+        val = cnn_validate_image(image_bytes)
+        method = "CNN" if val['cnn_used'] else "heuristic"
+        if not val['is_valid']:
+            flash(
+                f'❌ Image rejected ({method} validation, '
+                f'confidence={val["confidence"]:.0f}%): {val["reason"]}',
+                'danger'
+            )
+            flash('Please upload a valid breast tissue (FNA/H&E stained) image.', 'danger')
+            return redirect(url_for('upload_results', request_id=rid))
+
+        # ── Extract Wisconsin features ────────────────────────────────────────
+        features = extract_features(image_bytes)
         extracted = {k: float(features.get(k, FEATURE_DEFAULTS[k])) for k in FEATURES}
         session['img_features'] = extracted
-        if features.get('validation_failed', False):
-            flash('⚠️ Image may not be a standard FNA slide. Features extracted — review and adjust values.', 'warning')
-        else:
-            flash('✅ Features extracted successfully. Review values below.', 'success')
+        flash(
+            f'✅ Image validated ({method}, confidence={val["confidence"]:.0f}%). '
+            f'Features extracted — review values below.',
+            'success'
+        )
     except Exception as e:
-        flash(f'Image processing failed: {e}','danger')
+        flash(f'Image processing failed: {e}', 'danger')
     return redirect(url_for('upload_results', request_id=rid))
 
 @app.route('/api/extract-features', methods=['POST'])
@@ -1180,20 +1218,26 @@ def api_extract_features():
     if not f or not f.filename:
         return jsonify({'error': 'No image provided'}), 400
     from src.services.image_processor_advanced import extract_features
-    from src.services.image_validator import is_medical_image
+    from src.services.cnn_predictor import cnn_validate_image
     import math
     try:
         image_bytes = f.read()
 
-        # Validate image before extracting features
-        valid, confidence, reason = is_medical_image(image_bytes, strict=True)
-        if not valid:
+        # ── CNN image validation ──────────────────────────────────────────────
+        val = cnn_validate_image(image_bytes)
+        method = "CNN" if val['cnn_used'] else "heuristic"
+        if not val['is_valid']:
             return jsonify({
-                'error': f'Image rejected: {reason} Only H&E stained histology or FNA tissue slide images are accepted.',
+                'error': (
+                    f'Image rejected ({method} validation): {val["reason"]} '
+                    f'Please upload a valid breast tissue image.'
+                ),
                 'validation_failed': True,
-                'confidence': round(confidence, 2)
+                'confidence': val['confidence'],
+                'cnn_used':   val['cnn_used'],
             }), 400
 
+        # ── Extract Wisconsin features ────────────────────────────────────────
         features = extract_features(image_bytes)
         extracted = {}
         for k in FEATURES:
@@ -1206,8 +1250,12 @@ def api_extract_features():
                 v = float(FEATURE_DEFAULTS[k])
             extracted[k] = round(v, 6)
 
-        warning = confidence < 0.7
-        return jsonify({'features': extracted, 'warning': warning, 'confidence': round(confidence, 2)})
+        return jsonify({
+            'features':   extracted,
+            'warning':    val['confidence'] < 60,
+            'confidence': val['confidence'],
+            'cnn_used':   val['cnn_used'],
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1251,43 +1299,60 @@ def review_results(request_id):
                                    features=FEATURES, feat_values=feat_values,
                                    feature_defaults=FEATURE_DEFAULTS)
 
-        result, confidence, ood_info = run_prediction_with_ood(adj)
+        result, confidence = run_prediction(adj)
         stage = determine_stage(adj) if result == 1 else None
 
-        # If OOD detected, warn doctor but still allow saving with flag
-        ood_warning = ''
-        if ood_info.get('is_ood'):
-            ood_warning = (f"⚠️ OOD WARNING: {ood_info.get('reason', '')} "
-                           f"Confidence in prediction reliability: {ood_info.get('confidence', 0):.0f}%. "
-                           f"This result should be verified with additional clinical tests.")
-            flash(ood_warning, 'warning')
+        # ── CNN secondary prediction (from stored image if available) ─────────
+        from src.services.cnn_predictor import cnn_predict_image, cnn_available
+        cnn_result = cnn_conf = None
+        cnn_used_for_pred = False
+        if cnn_available() and lab.get('image_path'):
+            try:
+                img_full = os.path.join(app.config['UPLOAD_FOLDER'], lab['image_path'])
+                if os.path.exists(img_full):
+                    with open(img_full, 'rb') as _f:
+                        img_bytes = _f.read()
+                    cp = cnn_predict_image(img_bytes)
+                    if cp.get('available') and not cp.get('unrelated') and cp['result'] is not None:
+                        cnn_result = cp['result']
+                        cnn_conf   = cp['confidence']
+                        cnn_used_for_pred = True
+                        if cnn_result != result:
+                            flash(
+                                f'⚠️ Note: CNN image model suggests '
+                                f'{"MALIGNANT" if cnn_result==1 else "BENIGN"} '
+                                f'({cnn_conf:.1f}%) while feature model says '
+                                f'{"MALIGNANT" if result==1 else "BENIGN"} '
+                                f'({confidence:.1f}%). Consider both results.',
+                                'warning'
+                            )
+            except Exception as _e:
+                print(f"[CNN pred] error: {_e}")
 
         col('predictions').insert_one({
-            'patient_id':    req['patient_id'],
-            'request_id':    request_id,
-            'lab_result_id': lab['id'],
-            'features':      adj,
-            'result':        result,
-            'confidence':    confidence,
-            'stage':         stage,
-            'ood_detected':  ood_info.get('is_ood', False),
-            'ood_distance':  ood_info.get('distance', 0),
-            'ood_threshold': ood_info.get('threshold', 0),
-            'ood_confidence':ood_info.get('confidence', 100),
-            'doctor_notes':  request.form.get('doctor_notes',''),
-            'determined_by': session['user_id'],
-            'created_at':    now_str(),
-            'updated_at':    now_str()
+            'patient_id':        req['patient_id'],
+            'request_id':        request_id,
+            'lab_result_id':     lab['id'],
+            'features':          adj,
+            'result':            result,
+            'confidence':        confidence,
+            'stage':             stage,
+            'cnn_result':        cnn_result,
+            'cnn_confidence':    cnn_conf,
+            'cnn_used':          cnn_used_for_pred,
+            'doctor_notes':      request.form.get('doctor_notes',''),
+            'determined_by':     session['user_id'],
+            'created_at':        now_str(),
+            'updated_at':        now_str()
         })
         lbl = 'MALIGNANT' if result==1 else 'BENIGN'
         stage_str = f' — {stage}' if stage else ''
-        ood_tag = ' [OOD WARNING]' if ood_info.get('is_ood') else ''
         col('lab_requests').update_one(
             {'_id': oid(request_id)},
             {'$set': {'status':'completed','updated_at': now_str()}})
 
         notify_role('admin',
-            f"🏥 {req['patient_name']} [{req['patient_id']}] → {lbl}{stage_str} ({confidence:.1f}%){ood_tag}",
+            f"🏥 {req['patient_name']} [{req['patient_id']}] → {lbl}{stage_str} ({confidence:.1f}%)",
             url_for('all_predictions'))
 
         flash(f"Determination saved: {lbl}{stage_str} ({confidence:.1f}%)", 'success')

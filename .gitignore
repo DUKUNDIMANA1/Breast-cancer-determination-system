@@ -118,6 +118,9 @@ static/uploads/*
 static/reports/*.pdf
 artifacts/model.pkl
 artifacts/scaler.pkl
+artifacts/ood_detector.pkl
+artifacts/cnn_model.h5
+artifacts/cnn_metrics.json
 data_storage/
 models/
 *.pyc
@@ -129,3 +132,18 @@ app_clean*.py
 *_optimized*.py
 templates/*_backup.html
 templates/*_fixed.html
+
+# Large image datasets — too big for git
+data/merged_dataset/
+data/8863/
+data/8864/
+data/8865/
+data/8867/
+data/8913/
+data/breast_histopathology/
+
+# Temp / test scripts
+check_uploads.py
+check_image_types.py
+test_*.py
+train_log.txt
