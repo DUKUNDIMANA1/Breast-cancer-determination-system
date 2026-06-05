@@ -31,11 +31,11 @@ ARTIFACTS    = os.path.join(BASE_DIR, 'artifacts')
 MODEL_PATH   = os.path.join(ARTIFACTS, 'cnn_model.h5')
 METRICS_PATH = os.path.join(ARTIFACTS, 'cnn_metrics.json')
 
-IMG_SIZE   = 50
-BATCH_SIZE = 32
-EPOCHS     = 20
-SEED       = 42
-NUM_CLASSES = 3   # 0=Benign, 1=Malignant, 2=Unrelated
+IMG_SIZE    = 50
+BATCH_SIZE  = 64   # larger batch = faster per epoch
+EPOCHS      = 15   # phase 1 max (early stopping will cut this short)
+SEED        = 42
+NUM_CLASSES = 3    # 0=Benign, 1=Malignant, 2=Unrelated
 
 os.makedirs(ARTIFACTS, exist_ok=True)
 
@@ -163,13 +163,15 @@ cnn_model.summary()
 # ── 5. Phase 1: Train head (base frozen) ─────────────────────────────────────
 print("\n[CNN] Phase 1 — training classification head...")
 
+CHECKPOINT_PATH = os.path.join(ARTIFACTS, 'cnn_best.keras')  # safe format during training
+
 callbacks_p1 = [
     keras.callbacks.EarlyStopping(
-        patience=5, restore_best_weights=True, monitor='val_accuracy', mode='max'),
+        patience=4, restore_best_weights=True, monitor='val_accuracy', mode='max'),
     keras.callbacks.ReduceLROnPlateau(
-        factor=0.5, patience=3, monitor='val_loss', min_lr=1e-6),
+        factor=0.5, patience=2, monitor='val_loss', min_lr=1e-6),
     keras.callbacks.ModelCheckpoint(
-        MODEL_PATH, save_best_only=True, monitor='val_accuracy', mode='max'),
+        CHECKPOINT_PATH, save_best_only=True, monitor='val_accuracy', mode='max'),
 ]
 
 history1 = cnn_model.fit(
@@ -197,11 +199,11 @@ cnn_model.compile(
 
 callbacks_p2 = [
     keras.callbacks.EarlyStopping(
-        patience=4, restore_best_weights=True, monitor='val_accuracy', mode='max'),
+        patience=3, restore_best_weights=True, monitor='val_accuracy', mode='max'),
     keras.callbacks.ReduceLROnPlateau(
         factor=0.3, patience=2, monitor='val_loss', min_lr=1e-7),
     keras.callbacks.ModelCheckpoint(
-        MODEL_PATH, save_best_only=True, monitor='val_accuracy', mode='max'),
+        CHECKPOINT_PATH, save_best_only=True, monitor='val_accuracy', mode='max'),
 ]
 
 history2 = cnn_model.fit(
@@ -276,16 +278,21 @@ with open(METRICS_PATH, 'w') as f:
     json.dump(metrics, f, indent=2)
 
 
-# ── 8. Save ───────────────────────────────────────────────────────────────────
-cnn_model.save(MODEL_PATH)
-print(f"\n[CNN] Model saved  → {MODEL_PATH}")
+# ── 8. Save final model ───────────────────────────────────────────────────────
+# Load the best checkpoint (saved safely during training) then export to .h5
+if os.path.exists(CHECKPOINT_PATH):
+    best_model = keras.models.load_model(CHECKPOINT_PATH)
+    best_model.save(MODEL_PATH)
+    print(f"\n[CNN] Best model saved  → {MODEL_PATH}")
+    os.remove(CHECKPOINT_PATH)   # clean up checkpoint
+else:
+    cnn_model.save(MODEL_PATH)
+    print(f"\n[CNN] Model saved  → {MODEL_PATH}")
+
 print(f"[CNN] Metrics saved → {METRICS_PATH}")
 print("\n" + "=" * 60)
 print(f"  Training complete!  Accuracy: {acc * 100:.2f}%")
 print("=" * 60)
-
-
-import os, sys, json, warnings
 warnings.filterwarnings('ignore')
 
 import numpy as np

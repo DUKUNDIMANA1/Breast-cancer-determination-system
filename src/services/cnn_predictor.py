@@ -29,7 +29,8 @@ import os
 import numpy as np
 
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MODEL_PATH = os.path.join(BASE_DIR, 'artifacts', 'cnn_model.h5')
+MODEL_PATH      = os.path.join(BASE_DIR, 'artifacts', 'cnn_model.h5')
+CHECKPOINT_PATH = os.path.join(BASE_DIR, 'artifacts', 'cnn_best.keras')
 IMG_SIZE   = 50
 
 # Images whose raw CNN probability falls in this range are considered
@@ -41,20 +42,29 @@ _cnn_model = None
 
 
 def load_cnn():
-    """Load CNN model lazily on first use."""
+    """Load CNN model lazily on first use. Tries .h5 then .keras checkpoint."""
     global _cnn_model
     if _cnn_model is not None:
         return _cnn_model
-    if not os.path.exists(MODEL_PATH):
-        return None
-    try:
-        import tensorflow as tf
-        _cnn_model = tf.keras.models.load_model(MODEL_PATH)
-        print("[CNN] Model loaded successfully.")
-        return _cnn_model
-    except Exception as e:
-        print(f"[CNN] Failed to load model: {e}")
-        return None
+
+    import tensorflow as tf
+
+    # Try primary .h5 path first
+    for path in [MODEL_PATH, CHECKPOINT_PATH]:
+        if not os.path.exists(path):
+            continue
+        if os.path.getsize(path) < 1000:   # corrupt / empty file
+            print(f"[CNN] Skipping {os.path.basename(path)} — file is empty/corrupt.")
+            continue
+        try:
+            _cnn_model = tf.keras.models.load_model(path)
+            print(f"[CNN] Model loaded from {os.path.basename(path)}.")
+            return _cnn_model
+        except Exception as e:
+            print(f"[CNN] Could not load {os.path.basename(path)}: {e}")
+
+    print("[CNN] No valid model found — validation will use heuristic fallback.")
+    return None
 
 
 def _decode_and_resize(image_bytes):
@@ -259,5 +269,8 @@ def cnn_predict_image(image_bytes):
 
 
 def cnn_available():
-    """Return True if CNN model file exists on disk."""
-    return os.path.exists(MODEL_PATH)
+    """Return True if a valid CNN model file exists on disk."""
+    for path in [MODEL_PATH, CHECKPOINT_PATH]:
+        if os.path.exists(path) and os.path.getsize(path) > 1000:
+            return True
+    return False
