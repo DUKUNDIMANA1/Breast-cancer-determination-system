@@ -158,23 +158,75 @@ def cnn_validate_image(image_bytes):
             # 3-class model: 0=Benign, 1=Malignant, 2=Unrelated
             p_benign, p_malignant, p_unrelated = float(probs[0]), float(probs[1]), float(probs[2])
             predicted_class = int(np.argmax(probs))
-            is_valid = (predicted_class != 2)
+
+            # ── Histopathology colour check (H&E staining requirement) ────────
+            # Real H&E tissue slides have characteristic pink (eosin) and
+            # purple/blue (haematoxylin) tones. We check for these BEFORE
+            # accepting, as an independent second layer on top of the CNN.
+            import cv2 as _cv2
+            _nparr = np.frombuffer(image_bytes, np.uint8)
+            _img   = _cv2.imdecode(_nparr, _cv2.IMREAD_COLOR)
+            _he_pass = False
+            _he_reason = ""
+            if _img is not None:
+                _rgb = _cv2.cvtColor(_img, _cv2.COLOR_BGR2RGB).astype(float)
+                _r, _g, _b = _rgb[:,:,0], _rgb[:,:,1], _rgb[:,:,2]
+                # Pink (eosin): high R, moderate G and B, R > G
+                _pink   = float(np.mean((_r > 140) & (_g > 60) & (_b > 80) & (_r > _g)))
+                # Purple/blue (haematoxylin): B dominant over G, moderate R
+                _purple = float(np.mean((_b > 90) & (_b > _g * 1.05) & (_r > 50)))
+                # Laplacian variance — texture (tissue slides are always textured)
+                _gray   = _cv2.cvtColor(_img, _cv2.COLOR_BGR2GRAY)
+                _lap    = float(_cv2.Laplacian(_gray, _cv2.CV_64F).var())
+                # Require: meaningful pink OR purple AND some texture
+                _he_pass = (_pink > 0.04 or _purple > 0.04) and _lap > 50
+                _he_reason = (f"H&E pink={_pink:.0%}, purple={_purple:.0%}, "
+                              f"texture={_lap:.0f}")
+
+            # Minimum CNN confidence required to accept as tissue
+            TISSUE_MIN_CONF = 0.65   # 65% — must clearly win over other classes
 
             if predicted_class == 2:
+                # CNN explicitly says unrelated
+                is_valid   = False
                 confidence = round(p_unrelated * 100, 1)
                 reason = (
-                    f"CNN classified image as Unrelated (confidence={confidence:.0f}%). "
-                    f"Benign={p_benign:.2%}, Malignant={p_malignant:.2%}, "
-                    f"Unrelated={p_unrelated:.2%}."
+                    f"Image rejected: not a histopathology slide "
+                    f"(CNN: Unrelated={p_unrelated:.0%}, "
+                    f"Benign={p_benign:.0%}, Malignant={p_malignant:.0%}). "
+                    f"Upload an H&E stained breast tissue slide."
                 )
-            else:
-                label = "Benign" if predicted_class == 0 else "Malignant"
+            elif max(p_benign, p_malignant) < TISSUE_MIN_CONF:
+                # CNN not confident enough → reject
+                is_valid   = False
                 confidence = round(max(p_benign, p_malignant) * 100, 1)
                 reason = (
-                    f"CNN classified as tissue ({label}, confidence={confidence:.0f}%). "
-                    f"Benign={p_benign:.2%}, Malignant={p_malignant:.2%}, "
-                    f"Unrelated={p_unrelated:.2%}."
+                    f"Image rejected: CNN confidence too low for histopathology "
+                    f"({confidence:.0f}%, need ≥{TISSUE_MIN_CONF*100:.0f}%). "
+                    f"Benign={p_benign:.0%}, Malignant={p_malignant:.0%}, "
+                    f"Unrelated={p_unrelated:.0%}. "
+                    f"Upload a clear H&E stained breast tissue slide."
                 )
+            elif not _he_pass:
+                # CNN confident but no H&E staining detected → reject
+                is_valid   = False
+                confidence = round(max(p_benign, p_malignant) * 100, 1)
+                reason = (
+                    f"Image rejected: H&E staining not detected "
+                    f"({_he_reason}). "
+                    f"Only haematoxylin & eosin stained histopathology images "
+                    f"are accepted."
+                )
+            else:
+                # Both CNN and H&E check pass → accept
+                is_valid   = True
+                label      = "Benign" if p_benign > p_malignant else "Malignant"
+                confidence = round(max(p_benign, p_malignant) * 100, 1)
+                reason = (
+                    f"Valid histopathology slide accepted "
+                    f"({label}, CNN={confidence:.0f}%, {_he_reason})."
+                )
+
             return {
                 'is_valid':   is_valid,
                 'confidence': confidence,
