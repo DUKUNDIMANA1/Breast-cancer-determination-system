@@ -159,29 +159,63 @@ def cnn_validate_image(image_bytes):
             p_benign, p_malignant, p_unrelated = float(probs[0]), float(probs[1]), float(probs[2])
             predicted_class = int(np.argmax(probs))
 
-            # ── Histopathology colour check (H&E staining requirement) ────────
-            # Real H&E tissue slides have characteristic pink (eosin) and
-            # purple/blue (haematoxylin) tones. We check for these BEFORE
-            # accepting, as an independent second layer on top of the CNN.
+            # ── Histopathology colour + structure check ───────────────────
+            # Real H&E slides have BOTH eosin (pink) AND haematoxylin
+            # (purple/blue), plus fine cellular texture. Natural photos,
+            # water, skin, documents all fail at least one condition.
             import cv2 as _cv2
             _nparr = np.frombuffer(image_bytes, np.uint8)
             _img   = _cv2.imdecode(_nparr, _cv2.IMREAD_COLOR)
-            _he_pass = False
+            _he_pass   = False
             _he_reason = ""
             if _img is not None:
                 _rgb = _cv2.cvtColor(_img, _cv2.COLOR_BGR2RGB).astype(float)
                 _r, _g, _b = _rgb[:,:,0], _rgb[:,:,1], _rgb[:,:,2]
-                # Pink (eosin): high R, moderate G and B, R > G
-                _pink   = float(np.mean((_r > 140) & (_g > 60) & (_b > 80) & (_r > _g)))
-                # Purple/blue (haematoxylin): B dominant over G, moderate R
-                _purple = float(np.mean((_b > 90) & (_b > _g * 1.05) & (_r > 50)))
-                # Laplacian variance — texture (tissue slides are always textured)
-                _gray   = _cv2.cvtColor(_img, _cv2.COLOR_BGR2GRAY)
-                _lap    = float(_cv2.Laplacian(_gray, _cv2.CV_64F).var())
-                # Require: meaningful pink OR purple AND some texture
-                _he_pass = (_pink > 0.04 or _purple > 0.04) and _lap > 50
-                _he_reason = (f"H&E pink={_pink:.0%}, purple={_purple:.0%}, "
-                              f"texture={_lap:.0f}")
+                _gray = _cv2.cvtColor(_img, _cv2.COLOR_BGR2GRAY)
+
+                # ── Eosin pink: high R, meaningful G+B, R clearly > B ──────
+                # Avoids: natural skin (R>>B but no purple), red objects
+                _pink = float(np.mean(
+                    (_r > 155) & (_g > 75) & (_b > 95) &
+                    (_r > _g) & (_r > _b * 1.05)))
+
+                # ── Haematoxylin purple: B > G by 15%+, meaningful R ───────
+                # Avoids: water/sky (cyan = B AND G both high)
+                # Cyan trap: skip pixels where G is also very high (water)
+                _purple = float(np.mean(
+                    (_b > 110) & (_b > _g * 1.15) &
+                    (_r > 60)  & (_r < 210) &
+                    (_g < 180)))           # blocks cyan (pool, sky)
+
+                # ── Cyan (water, sky) rejection ─────────────────────────────
+                # Water: high B AND high G, low R
+                _cyan = float(np.mean(
+                    (_b > 110) & (_g > 100) & (_r < 140)))
+
+                # ── Texture: fine cellular structure ────────────────────────
+                _lap = float(_cv2.Laplacian(_gray, _cv2.CV_64F).var())
+
+                # ── Overexposed / document / clean background ───────────────
+                _white = float(np.mean((_r > 220) & (_g > 220) & (_b > 220)))
+
+                # Must have BOTH pink AND purple (co-presence required)
+                # Avoids accepting images with only one H&E colour
+                _both_present = _pink > 0.05 and _purple > 0.03
+
+                # Reject if too much cyan (water, sky, pool)
+                _no_water = _cyan < 0.20
+
+                # Reject if too bright / document-like
+                _not_overexposed = _white < 0.40
+
+                # Require meaningful texture (cellular structure)
+                _has_texture = _lap > 100
+
+                _he_pass = _both_present and _no_water and _not_overexposed and _has_texture
+                _he_reason = (
+                    f"H&E pink={_pink:.0%}, purple={_purple:.0%}, "
+                    f"cyan={_cyan:.0%}, texture={_lap:.0f}, white={_white:.0%}"
+                )
 
             # Minimum CNN confidence required to accept as tissue
             TISSUE_MIN_CONF = 0.65   # 65% — must clearly win over other classes
@@ -208,14 +242,16 @@ def cnn_validate_image(image_bytes):
                     f"Upload a clear H&E stained breast tissue slide."
                 )
             elif not _he_pass:
-                # CNN confident but no H&E staining detected → reject
+                # CNN confident but histopathology colour check failed → reject
                 is_valid   = False
                 confidence = round(max(p_benign, p_malignant) * 100, 1)
                 reason = (
-                    f"Image rejected: H&E staining not detected "
-                    f"({_he_reason}). "
-                    f"Only haematoxylin & eosin stained histopathology images "
-                    f"are accepted."
+                    f"Image rejected: not a valid histopathology slide. "
+                    f"{_he_reason}. "
+                    f"Both eosin (pink >5%) AND haematoxylin (purple >3%) "
+                    f"staining must be present, with no water/cyan and "
+                    f"sufficient cellular texture (>100). "
+                    f"Upload an H&E stained breast tissue slide image."
                 )
             else:
                 # Both CNN and H&E check pass → accept
