@@ -61,9 +61,22 @@
   </div>
   {% endif %}
   {% else %}
-  <div class="alert alert-danger">
-    <i class="fa-solid fa-triangle-exclamation"></i>
-    <strong>No image uploaded.</strong> The lab technician must upload a tissue slide image before you can run the AI prediction.
+  <div class="alert alert-warning" style="display:flex;align-items:flex-start;gap:10px;">
+    <i class="fa-solid fa-triangle-exclamation" style="margin-top:2px;flex-shrink:0;font-size:18px;"></i>
+    <div>
+      <strong>No tissue slide image uploaded yet.</strong><br>
+      <span class="fs-13">The system now uses a CNN model trained on real IDC histopathology images.
+      A tissue slide image is required to run the AI prediction.</span><br>
+      <span class="fs-12 text-dim mt-8" style="display:block;">
+        Ask the lab technician to upload the image via the Lab Dashboard,
+        or if you have access, use the link below.
+      </span>
+      {% if user.role in ['lab','admin'] %}
+      <a href="{{ url_for('upload_results', request_id=req.id) }}" class="btn btn-primary btn-sm mt-8">
+        <i class="fa-solid fa-upload"></i> Upload Image Now
+      </a>
+      {% endif %}
+    </div>
   </div>
   {% endif %}
 </div>
