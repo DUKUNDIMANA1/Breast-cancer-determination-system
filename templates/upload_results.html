@@ -1,13 +1,12 @@
-﻿{% extends "base.html" %}{% block title %}Upload Lab Results{% endblock %}{% block content %}
+﻿{% extends "base.html" %}{% block title %}Upload Lab Image{% endblock %}{% block content %}
 <div class="page-header-row">
   <div>
-    <h1 class="page-header" style="margin:0"><i class="fa-solid fa-flask"></i> Upload Lab Results</h1>
+    <h1 class="page-header" style="margin:0"><i class="fa-solid fa-flask"></i> Upload Tissue Slide Image</h1>
     <p class="text-muted fs-13 mt-8">Request #{{ req.id }} · <span class="id-pill">{{ req.patient_id }}</span> · {{ req.patient_name }}</p>
   </div>
   <a href="{{ url_for('lab_dashboard') }}" class="btn btn-outline btn-sm"><i class="fa-solid fa-arrow-left"></i> Back</a>
 </div>
 
-<!-- Request info -->
 <div class="card mb-16">
   <div class="sec-label"><i class="fa-solid fa-clipboard-list"></i> Request Information</div>
   <div class="info-grid">
@@ -20,327 +19,58 @@
 <div class="alert alert-info mb-16" style="display:flex;align-items:flex-start;gap:10px;">
   <i class="fa-solid fa-circle-info" style="margin-top:2px;flex-shrink:0;"></i>
   <div>
-    <strong>Required:</strong> Upload a valid FNA or histology tissue slide image.
-    The system will validate the image and extract cell nucleus features automatically.
-    Unrelated images (photos, documents, etc.) will be rejected.
+    <strong>How it works:</strong> Upload the H&amp;E stained tissue slide image.
+    The system will validate it and the CNN model will automatically classify it as
+    <strong>Benign</strong> or <strong>Malignant</strong> when the doctor reviews the results.
+    Non-tissue images will be rejected.
   </div>
 </div>
 
-<!-- Image upload & extract -->
-<div class="card mb-16">
-  <div class="sec-label"><i class="fa-solid fa-microscope"></i> Tissue Image Upload &amp; Feature Extraction</div>
-  <div class="upload-zone" id="uz">
-    <input type="file" id="img-input" accept="image/*" onchange="handleImageSelect(event)"/>
-    <div class="upload-icon"><i class="fa-solid fa-microscope"></i></div>
-    <div class="upload-text">Drop tissue image or click to browse</div>
-    <div class="fs-sm text-dim mt-md">JPG, PNG — histology / FNA slide images only</div>
-  </div>
-  <div id="prev-wrap" style="display:none;margin-top:12px;">
-    <img id="prev-img" src="" style="max-height:200px;border-radius:8px;border:1px solid var(--border-primary);"/>
-  </div>
-  <div id="extract-status" class="mt-md" style="display:none;"></div>
-  <button type="button" id="extract-btn" class="btn btn-success mt-lg" onclick="extractFeatures()" disabled>
-    <i class="fa-solid fa-cogs"></i> Validate &amp; Extract Features
-  </button>
-</div>
+<form method="POST" action="{{ url_for('upload_results', request_id=req.id) }}" enctype="multipart/form-data" id="upload-form">
 
-<!-- Feature values (read-only until extracted) -->
-<form method="POST" action="{{ url_for('upload_results',request_id=req.id) }}" enctype="multipart/form-data" id="submit-form">
-  <div class="card mb-16" id="features-card" style="display:none;">
+  <div class="card mb-16">
+    <div class="sec-label"><i class="fa-solid fa-microscope"></i> Tissue Slide Image</div>
 
-    <!-- ── WBC Measurement Summary Banner ─────────────────────────── -->
-    <div class="alert alert-success mb-12" id="extracted-banner" style="display:none;">
-      <i class="fa-solid fa-check-circle"></i> <span id="extracted-msg"></span>
+    <div class="upload-zone" id="uz" onclick="document.getElementById('img-input').click()">
+      <input type="file" name="image" id="img-input" accept="image/*" style="display:none" onchange="previewImage(event)" required/>
+      <div class="upload-icon"><i class="fa-solid fa-microscope"></i></div>
+      <div class="upload-text">Drop H&amp;E tissue slide image or click to browse</div>
+      <div class="fs-sm text-dim mt-md">JPG, PNG — histopathology slides only</div>
     </div>
 
-    <!-- ── WBC Visual Summary Panel ───────────────────────────────── -->
-    <div id="wbc-summary" style="display:none;">
-      <div class="sec-label"><i class="fa-solid fa-chart-bar"></i> Wisconsin Breast Cancer (WBC) Measurements — Extracted from Image</div>
-      <p class="fs-12 text-dim mb-12" style="margin-top:-4px;">
-        30 cell nucleus features extracted using the Wisconsin Breast Cancer Dataset methodology.
-        Each bar shows where the measured value sits within the normal dataset range (blue = low, red = high).
-      </p>
-
-      <!-- Mean Features Summary -->
-      <div class="mb-16">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-secondary);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border-light);">
-          <i class="fa-solid fa-circle-dot" style="color:#3b82f6;"></i> Mean Values (average across all nuclei)
-        </div>
-        <div id="wbc-mean-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;"></div>
-      </div>
-
-      <!-- SE Features Summary -->
-      <div class="mb-16">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-secondary);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border-light);">
-          <i class="fa-solid fa-circle-dot" style="color:#8b5cf6;"></i> Standard Error (variability between nuclei)
-        </div>
-        <div id="wbc-se-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;"></div>
-      </div>
-
-      <!-- Worst Features Summary -->
-      <div class="mb-16">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-secondary);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border-light);">
-          <i class="fa-solid fa-circle-dot" style="color:#ef4444;"></i> Worst Values (mean of the 3 largest nuclei)
-        </div>
-        <div id="wbc-worst-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;"></div>
-      </div>
-    </div>
-
-    <!-- ── Editable Feature Inputs ─────────────────────────────────── -->
-    <div id="feat-inputs-toggle" style="display:none;">
-      <button type="button" onclick="toggleInputs()" class="btn btn-outline btn-sm mb-12" style="font-size:12px;">
-        <i class="fa-solid fa-pen"></i> <span id="toggle-label">Show / Edit Raw Values</span>
-      </button>
-    </div>
-
-    <div id="feat-inputs-wrap" style="display:none;">
-      <div class="sec-label" style="border:none;padding-top:0">Mean Features</div>
-      <div class="feat-grid mb-md">
-        {% for f in ['radius_mean','texture_mean','perimeter_mean','area_mean','smoothness_mean','compactness_mean','concavity_mean','concave points_mean','symmetry_mean','fractal_dimension_mean'] %}
-        <div class="feat-g"><label class="form-label">{{ f }}</label>
-          <input class="form-control feat-input" type="number" name="{{ f }}" step="any"
-                 value="{{ '%.6f'|format(feat_values.get(f, feature_defaults.get(f, 0))) }}" required/></div>
-        {% endfor %}
-      </div>
-      <div class="sec-label" style="border:none">Standard Error Features</div>
-      <div class="feat-grid mb-md">
-        {% for f in ['radius_se','texture_se','perimeter_se','area_se','smoothness_se','compactness_se','concavity_se','concave points_se','symmetry_se','fractal_dimension_se'] %}
-        <div class="feat-g"><label class="form-label">{{ f }}</label>
-          <input class="form-control feat-input" type="number" name="{{ f }}" step="any"
-                 value="{{ '%.6f'|format(feat_values.get(f, feature_defaults.get(f, 0))) }}" required/></div>
-        {% endfor %}
-      </div>
-      <div class="sec-label" style="border:none">Worst Features</div>
-      <div class="feat-grid">
-        {% for f in ['radius_worst','texture_worst','perimeter_worst','area_worst','smoothness_worst','compactness_worst','concavity_worst','concave points_worst','symmetry_worst','fractal_dimension_worst'] %}
-        <div class="feat-g"><label class="form-label">{{ f }}</label>
-          <input class="form-control feat-input" type="number" name="{{ f }}" step="any"
-                 value="{{ '%.6f'|format(feat_values.get(f, feature_defaults.get(f, 0))) }}" required/></div>
-        {% endfor %}
-      </div>
-    </div>
-
-    <!-- Hidden inputs (always submitted even when display is collapsed) -->
-    <div id="feat-hidden-wrap" style="display:none;">
-      {% for f in ['radius_mean','texture_mean','perimeter_mean','area_mean','smoothness_mean','compactness_mean','concavity_mean','concave points_mean','symmetry_mean','fractal_dimension_mean',
-                   'radius_se','texture_se','perimeter_se','area_se','smoothness_se','compactness_se','concavity_se','concave points_se','symmetry_se','fractal_dimension_se',
-                   'radius_worst','texture_worst','perimeter_worst','area_worst','smoothness_worst','compactness_worst','concavity_worst','concave points_worst','symmetry_worst','fractal_dimension_worst'] %}
-      <input type="hidden" class="feat-hidden" name="{{ f }}" value="{{ '%.6f'|format(feat_values.get(f, feature_defaults.get(f, 0))) }}"/>
-      {% endfor %}
+    <div id="prev-wrap" style="display:none;margin-top:16px;text-align:center;">
+      <img id="prev-img" src="" style="max-height:280px;border-radius:8px;border:2px solid var(--accent-primary);"/>
+      <div class="fs-12 text-dim mt-8" id="img-name"></div>
     </div>
   </div>
 
-  <!-- Hidden image input -->
-  <input type="file" name="image" id="hidden-img-input" style="display:none;" accept="image/*"/>
-
-  <div class="card mb-16" id="notes-card" style="display:none;">
+  <div class="card mb-16">
     <div class="sec-label"><i class="fa-solid fa-note-sticky"></i> Lab Notes</div>
     <textarea class="form-control" name="lab_notes" rows="3"
-              placeholder="Sample quality, processing notes, observations…"></textarea>
+              placeholder="Sample quality, staining notes, processing observations…"></textarea>
   </div>
 
-  <div id="submit-section" style="display:none;" class="d-flex gap-md">
-    <button type="submit" class="btn btn-primary">
-      <i class="fa-solid fa-check-circle"></i> Submit Results and Notify Doctor
+  <div class="d-flex gap-md">
+    <button type="submit" class="btn btn-primary" id="submit-btn" disabled>
+      <i class="fa-solid fa-check-circle"></i> Submit &amp; Notify Doctor
     </button>
     <a href="{{ url_for('lab_dashboard') }}" class="btn btn-secondary">Cancel</a>
   </div>
 </form>
 
 {% block scripts %}
-<style>
-.feat-filled { border-color: var(--success) !important; box-shadow: 0 0 0 2px rgba(0,229,176,0.2) !important; }
-.wbc-row {
-  background: var(--surface);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-.wbc-label {
-  font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: .4px;
-  color: var(--text-secondary); margin-bottom: 2px;
-}
-.wbc-desc {
-  font-size: 11px; color: var(--text-dim, #6b7280); margin-bottom: 4px;
-}
-.wbc-value {
-  font-size: 16px; font-weight: 700; color: var(--text-primary);
-  font-family: var(--font-mono, monospace); margin-bottom: 4px;
-}
-.wbc-bar-bg {
-  height: 6px; background: var(--border-light);
-  border-radius: 3px; overflow: hidden;
-}
-.wbc-bar-fill {
-  height: 100%; border-radius: 3px;
-  transition: width .6s ease;
-}
-</style>
 <script>
-let selectedFile = null;
-let featuresExtracted = false;
-let inputsVisible = false;
-
-// WBC feature metadata: [label, description, min, max, unit]
-const WBC_META = {
-  radius:            ['Radius',           'Mean distance from centre to perimeter', 6.98, 28.11, 'µm'],
-  texture:           ['Texture',          'Standard deviation of grey-scale values', 9.71, 39.28, ''],
-  perimeter:         ['Perimeter',        'Perimeter of the nucleus', 43.79, 188.5, 'µm'],
-  area:              ['Area',             'Area of the nucleus', 143.5, 2501.0, 'µm²'],
-  smoothness:        ['Smoothness',       'Local variation in radius lengths', 0.053, 0.163, ''],
-  compactness:       ['Compactness',      'Perimeter² / Area − 1.0', 0.019, 0.345, ''],
-  concavity:         ['Concavity',        'Severity of concave portions of contour', 0.0, 0.427, ''],
-  'concave points':  ['Concave Points',   'Number of concave portions of contour', 0.0, 0.201, ''],
-  symmetry:          ['Symmetry',         'Symmetry of nucleus shape', 0.106, 0.304, ''],
-  fractal_dimension: ['Fractal Dimension','Coastline approximation − 1', 0.05, 0.097, ''],
-};
-
-function getColor(pct) {
-  // Blue (low) → Green (mid) → Red (high)
-  if (pct < 0.5) {
-    const t = pct * 2;
-    const r = Math.round(59  + t * (34 - 59));
-    const g = Math.round(130 + t * (197 - 130));
-    const b = Math.round(246 + t * (94 - 246));
-    return `rgb(${r},${g},${b})`;
-  } else {
-    const t = (pct - 0.5) * 2;
-    const r = Math.round(34 + t * (239 - 34));
-    const g = Math.round(197 + t * (68 - 197));
-    const b = Math.round(94 + t * (68 - 94));
-    return `rgb(${r},${g},${b})`;
-  }
-}
-
-function renderWbcRow(featureKey, value) {
-  const baseName = featureKey.replace(/_mean$|_se$|_worst$/, '').replace(/_/g, ' ').replace(' points', ' points');
-  const meta = WBC_META[baseName] || WBC_META[featureKey] || [featureKey, '', 0, 1, ''];
-  const [label, desc, minVal, maxVal, unit] = meta;
-  const pct = Math.min(1, Math.max(0, (value - minVal) / (maxVal - minVal)));
-  const color = getColor(pct);
-  const displayVal = value < 0.001 ? value.toExponential(3) : value.toFixed(4);
-  return `
-    <div class="wbc-row">
-      <div class="wbc-label">${label}</div>
-      <div class="wbc-desc">${desc}</div>
-      <div class="wbc-value">${displayVal}<span style="font-size:11px;font-weight:400;color:var(--text-dim);margin-left:3px;">${unit}</span></div>
-      <div class="wbc-bar-bg">
-        <div class="wbc-bar-fill" style="width:${(pct*100).toFixed(1)}%;background:${color};"></div>
-      </div>
-    </div>`;
-}
-
-function populateWbcPanel(features) {
-  const meanKeys  = ['radius_mean','texture_mean','perimeter_mean','area_mean','smoothness_mean',
-                     'compactness_mean','concavity_mean','concave points_mean','symmetry_mean','fractal_dimension_mean'];
-  const seKeys    = ['radius_se','texture_se','perimeter_se','area_se','smoothness_se',
-                     'compactness_se','concavity_se','concave points_se','symmetry_se','fractal_dimension_se'];
-  const worstKeys = ['radius_worst','texture_worst','perimeter_worst','area_worst','smoothness_worst',
-                     'compactness_worst','concavity_worst','concave points_worst','symmetry_worst','fractal_dimension_worst'];
-
-  document.getElementById('wbc-mean-grid').innerHTML  = meanKeys.map(k  => renderWbcRow(k, features[k]  || 0)).join('');
-  document.getElementById('wbc-se-grid').innerHTML    = seKeys.map(k    => renderWbcRow(k, features[k]  || 0)).join('');
-  document.getElementById('wbc-worst-grid').innerHTML = worstKeys.map(k => renderWbcRow(k, features[k]  || 0)).join('');
-  document.getElementById('wbc-summary').style.display = '';
-  document.getElementById('feat-inputs-toggle').style.display = '';
-}
-
-function toggleInputs() {
-  inputsVisible = !inputsVisible;
-  document.getElementById('feat-inputs-wrap').style.display = inputsVisible ? '' : 'none';
-  document.getElementById('toggle-label').textContent = inputsVisible ? 'Hide Raw Values' : 'Show / Edit Raw Values';
-}
-
-function handleImageSelect(e) {
+function previewImage(e) {
   const file = e.target.files[0];
   if (!file) return;
-  selectedFile = file;
-  featuresExtracted = false;
   const reader = new FileReader();
   reader.onload = ev => {
     document.getElementById('prev-img').src = ev.target.result;
     document.getElementById('prev-wrap').style.display = 'block';
+    document.getElementById('img-name').textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+    document.getElementById('submit-btn').disabled = false;
   };
   reader.readAsDataURL(file);
-  document.getElementById('extract-btn').disabled = false;
-  const dt = new DataTransfer();
-  dt.items.add(file);
-  document.getElementById('hidden-img-input').files = dt.files;
-  document.getElementById('features-card').style.display = 'none';
-  document.getElementById('notes-card').style.display = 'none';
-  document.getElementById('submit-section').style.display = 'none';
-  document.getElementById('wbc-summary').style.display = 'none';
-}
-
-function extractFeatures() {
-  if (!selectedFile) return;
-  const btn    = document.getElementById('extract-btn');
-  const status = document.getElementById('extract-status');
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Validating &amp; Extracting…';
-  status.style.display = 'block';
-  status.innerHTML = '<div class="alert alert-info"><i class="fa-solid fa-spinner fa-spin"></i> Analysing histopathology image — extracting WBC features…</div>';
-
-  const fd = new FormData();
-  fd.append('image', selectedFile);
-
-  fetch('/api/extract-features', { method: 'POST', body: fd })
-    .then(r => {
-      if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Server error ' + r.status); });
-      return r.json();
-    })
-    .then(data => {
-      if (data.error) {
-        status.innerHTML = '<div class="alert alert-danger"><i class="fa-solid fa-xmark-circle"></i> ' + data.error + '</div>';
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-cogs"></i> Validate &amp; Extract Features';
-        return;
-      }
-
-      // Fill editable inputs
-      let filled = 0;
-      Object.entries(data.features).forEach(([key, val]) => {
-        const el = document.querySelector('input.feat-input[name="' + key + '"]');
-        if (el) { el.value = val.toFixed(6); el.classList.add('feat-filled'); filled++; }
-        // Also fill hidden inputs
-        const hid = document.querySelector('input.feat-hidden[name="' + key + '"]');
-        if (hid) { hid.value = val.toFixed(6); }
-      });
-
-      // Show card
-      document.getElementById('features-card').style.display = '';
-      document.getElementById('notes-card').style.display = '';
-      document.getElementById('submit-section').style.display = '';
-      document.getElementById('feat-hidden-wrap').style.display = '';
-
-      // Show WBC measurement panel
-      populateWbcPanel(data.features);
-
-      // Banner
-      const banner = document.getElementById('extracted-banner');
-      const msg    = document.getElementById('extracted-msg');
-      banner.style.display = '';
-      if (data.warning) {
-        banner.className = 'alert alert-warning mb-12';
-        msg.textContent  = '⚠️ Image accepted with lower confidence (' + data.confidence + '%). ' + filled + ' WBC features extracted — review values carefully.';
-      } else {
-        banner.className = 'alert alert-success mb-12';
-        msg.textContent  = '✅ Valid histopathology image — ' + filled + ' Wisconsin Breast Cancer features extracted successfully. Review measurements below.';
-      }
-
-      status.innerHTML = '';
-      btn.innerHTML = '<i class="fa-solid fa-check"></i> Features Extracted';
-      btn.className = 'btn btn-outline mt-lg';
-      featuresExtracted = true;
-
-      document.getElementById('wbc-summary').scrollIntoView({behavior:'smooth', block:'start'});
-    })
-    .catch(err => {
-      status.innerHTML = '<div class="alert alert-danger"><i class="fa-solid fa-xmark-circle"></i> ' + err.message + '</div>';
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fa-solid fa-cogs"></i> Validate &amp; Extract Features';
-    });
 }
 
 // Drag & drop
@@ -351,16 +81,10 @@ uz.addEventListener('drop', e => {
   e.preventDefault(); uz.classList.remove('drag');
   const file = e.dataTransfer.files[0];
   if (file) {
-    document.getElementById('img-input').files = e.dataTransfer.files;
-    handleImageSelect({ target: { files: [file] } });
-  }
-});
-
-// Prevent submit without extraction
-document.getElementById('submit-form').addEventListener('submit', function(e) {
-  if (!featuresExtracted) {
-    e.preventDefault();
-    alert('Please upload and validate a histopathology image before submitting.');
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById('img-input').files = dt.files;
+    previewImage({ target: { files: [file] } });
   }
 });
 </script>

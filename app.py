@@ -1,7 +1,7 @@
 ﻿"""
 BreastCare AI — MongoDB Atlas Edition
 Roles: Receptionist → Doctor → Lab Technician → Doctor → Admin
-Model: Logistic Regression | Accuracy: 97.37%
+Model: CNN (MobileNetV2, IDC Histopathology Dataset) | Accuracy: 92.4%
 Database: MongoDB Atlas Cloud
 """
 
@@ -10,7 +10,7 @@ from flask import (Flask, render_template, request, redirect,
 from pymongo import MongoClient, DESCENDING
 from bson import ObjectId
 from bson.errors import InvalidId
-import hashlib, secrets, os, pickle, json
+import hashlib, secrets, os, json
 from datetime import datetime, timedelta
 from functools import wraps
 from dotenv import load_dotenv
@@ -19,9 +19,6 @@ import phonenumbers
 
 # ── Absolute paths ────────────────────────────────────────────────────────────
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH  = os.path.join(BASE_DIR, 'artifacts', 'model.pkl')
-SCALER_PATH = os.path.join(BASE_DIR, 'artifacts', 'scaler.pkl')
-CSV_PATH    = os.path.join(BASE_DIR, 'data', 'breast-cancer.csv')
 
 # Load environment variables from a single source of truth.
 load_dotenv(os.path.join(BASE_DIR, '.env'), override=False)
@@ -180,63 +177,6 @@ def col(name):
             raise RuntimeError("MongoDB is not connected. Please check your Atlas URI in .env")
     return db[name]
 
-# ── Features ──────────────────────────────────────────────────────────────────
-FEATURES = [
-    'radius_mean','texture_mean','perimeter_mean','area_mean','smoothness_mean',
-    'compactness_mean','concavity_mean','concave points_mean','symmetry_mean','fractal_dimension_mean',
-    'radius_se','texture_se','perimeter_se','area_se','smoothness_se',
-    'compactness_se','concavity_se','concave points_se','symmetry_se','fractal_dimension_se',
-    'radius_worst','texture_worst','perimeter_worst','area_worst','smoothness_worst',
-    'compactness_worst','concavity_worst','concave points_worst','symmetry_worst','fractal_dimension_worst'
-]
-FEATURE_DEFAULTS = {
-    'radius_mean':14.1273,'texture_mean':19.2896,'perimeter_mean':91.969,'area_mean':654.8891,
-    'smoothness_mean':0.0964,'compactness_mean':0.1043,'concavity_mean':0.0888,
-    'concave points_mean':0.0489,'symmetry_mean':0.1812,'fractal_dimension_mean':0.0628,
-    'radius_se':0.4052,'texture_se':1.2169,'perimeter_se':2.8661,'area_se':40.3371,
-    'smoothness_se':0.007,'compactness_se':0.0255,'concavity_se':0.0319,
-    'concave points_se':0.0118,'symmetry_se':0.0205,'fractal_dimension_se':0.0038,
-    'radius_worst':16.2692,'texture_worst':25.6772,'perimeter_worst':107.2612,'area_worst':880.5831,
-    'smoothness_worst':0.1324,'compactness_worst':0.2543,'concavity_worst':0.2722,
-    'concave points_worst':0.1146,'symmetry_worst':0.2901,'fractal_dimension_worst':0.0839
-}
-
-# ── ML Model loader with auto-retrain on version mismatch ─────────────────────
-def _load_model():
-    def _train_fresh():
-        import pandas as pd
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.model_selection import train_test_split
-        from sklearn.preprocessing import StandardScaler
-        print("[BreastCare AI] Retraining model on breast-cancer.csv (30 features)...")
-        df  = pd.read_csv(CSV_PATH)
-        # Map M→1 (Malignant), B→0 (Benign)
-        df['diagnosis'] = df['diagnosis'].map({'M': 1, 'B': 0})
-        X   = df[FEATURES]; y = df['diagnosis']
-        Xtr,Xte,ytr,yte = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-        sc  = StandardScaler()
-        Xtr = sc.fit_transform(Xtr)
-        lr  = LogisticRegression(max_iter=1000, random_state=42)
-        lr.fit(Xtr, ytr)
-        with open(MODEL_PATH,  'wb') as f: pickle.dump(lr, f)
-        with open(SCALER_PATH, 'wb') as f: pickle.dump(sc, f)
-        from sklearn.metrics import accuracy_score
-        acc = accuracy_score(yte, lr.predict(sc.transform(Xte)))
-        print(f"[BreastCare AI] Retrained. Accuracy: {acc*100:.2f}%")
-        return lr, sc
-    try:
-        with open(MODEL_PATH,  'rb') as f: mdl = pickle.load(f)
-        with open(SCALER_PATH, 'rb') as f: sc  = pickle.load(f)
-        import pandas as pd
-        _X = sc.transform(pd.DataFrame([FEATURE_DEFAULTS], columns=FEATURES))
-        mdl.predict_proba(_X)
-        return mdl, sc
-    except Exception as e:
-        print(f"[BreastCare AI] Model issue ({e}). Retraining...")
-        return _train_fresh()
-
-model, scaler = _load_model()
-
 # ── Pre-load CNN at startup (background thread, non-blocking) ─────────────────
 def _preload_cnn():
     try:
@@ -308,32 +248,6 @@ def doc(mongo_doc):
 
 def docs(cursor):
     return [doc(d) for d in cursor]
-
-def run_prediction(feat_dict):
-    import pandas as pd
-    X = scaler.transform(pd.DataFrame([feat_dict], columns=FEATURES))
-    r = int(model.predict(X)[0])
-    c = float(max(model.predict_proba(X)[0])) * 100
-    return r, c
-
-def determine_stage(feat_dict):
-    """Estimate breast cancer stage (I–IV) for MALIGNANT predictions."""
-    radius      = feat_dict.get('radius_mean', 0)
-    concavity   = feat_dict.get('concavity_mean', 0)
-    comp_worst  = feat_dict.get('compactness_worst', 0)
-    conc_worst  = feat_dict.get('concavity_worst', 0)
-
-    size_score  = 0 if radius < 12 else (1 if radius < 16 else 2)
-    shape_score = 0 if concavity < 0.05 else (1 if concavity < 0.15 else 2)
-    aggr_score  = 0 if comp_worst < 0.15 else (1 if comp_worst < 0.35 else 2)
-    worst_score = 0 if conc_worst < 0.15 else (1 if conc_worst < 0.35 else 2)
-
-    total = size_score + shape_score + aggr_score + worst_score
-
-    if total <= 1:   return 'Stage I'
-    elif total <= 3: return 'Stage II'
-    elif total <= 5: return 'Stage III'
-    else:            return 'Stage IV'
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 def notify(user_id, message, link=None):
@@ -1103,161 +1017,59 @@ def upload_results(request_id):
     req['patient_name'] = pt['full_name'] if pt else '—'
 
     if request.method == 'POST':
-        feats = {}
-        for f in FEATURES:
-            try:    feats[f] = float(request.form.get(f, FEATURE_DEFAULTS[f]))
-            except: feats[f] = FEATURE_DEFAULTS[f]
+        from src.services.image_processor_advanced import generate_annotated_image
+        from src.services.cnn_predictor import cnn_validate_image
 
-        img_path = None; img_ann = None
-        cnn_validation_meta = {}
         img_file = request.files.get('image')
-        if img_file and img_file.filename:
-            from src.services.image_processor_advanced import generate_annotated_image
-            from src.services.cnn_predictor import cnn_validate_image
-            fb = img_file.read()
+        if not img_file or not img_file.filename:
+            flash('Please upload a tissue slide image.', 'danger')
+            return redirect(url_for('upload_results', request_id=request_id))
 
-            # ── CNN gate on direct-submit path ────────────────────────────────
-            val = cnn_validate_image(fb)
-            if not val['is_valid']:
-                method = "CNN" if val['cnn_used'] else "heuristic"
-                flash(
-                    f'❌ Image rejected ({method} validation, '
-                    f'confidence={val["confidence"]:.0f}%): {val["reason"]}',
-                    'danger'
-                )
-                flash('Please upload a valid breast tissue (FNA/H&E stained) image.', 'danger')
-                return redirect(url_for('upload_results', request_id=request_id))
+        fb  = img_file.read()
+        val = cnn_validate_image(fb)
+        if not val['is_valid']:
+            method = "CNN" if val['cnn_used'] else "heuristic"
+            flash(f'❌ Image rejected ({method}): {val["reason"]}', 'danger')
+            return redirect(url_for('upload_results', request_id=request_id))
 
-            sn = f"{req['patient_id']}_{request_id}.jpg"
-            ip = os.path.join(app.config['UPLOAD_FOLDER'], sn)
-            with open(ip,'wb') as fp: fp.write(fb)
-            img_path = sn
-            img_ann  = generate_annotated_image(fb)
-            cnn_validation_meta = {
+        sn = f"{req['patient_id']}_{request_id}.jpg"
+        ip = os.path.join(app.config['UPLOAD_FOLDER'], sn)
+        with open(ip, 'wb') as fp: fp.write(fb)
+        img_ann = generate_annotated_image(fb)
+
+        col('lab_results').insert_one({
+            'request_id':      request_id,
+            'patient_id':      req['patient_id'],
+            'image_path':      sn,
+            'image_annotated': img_ann,
+            'cnn_validation':  {
                 'cnn_valid':      val['is_valid'],
                 'cnn_confidence': val['confidence'],
                 'cnn_used':       val['cnn_used'],
                 'cnn_reason':     val['reason'],
-            }
-
-        col('lab_results').insert_one({
-            'request_id':       request_id,
-            'patient_id':       req['patient_id'],
-            'features':         feats,
-            'image_path':       img_path,
-            'image_annotated':  img_ann,
-            'cnn_validation':   cnn_validation_meta,
-            'lab_notes':        request.form.get('lab_notes',''),
-            'submitted_by':     session['user_id'],
-            'submitted_at':     now_str()
+            },
+            'lab_notes':       request.form.get('lab_notes', ''),
+            'submitted_by':    session['user_id'],
+            'submitted_at':    now_str()
         })
         col('lab_requests').update_one(
             {'_id': oid(request_id)},
-            {'$set': {'status':'results_ready','updated_at': now_str()}})
+            {'$set': {'status': 'results_ready', 'updated_at': now_str()}})
 
         notify(req['requested_by'],
                f"✅ Lab results ready for {req['patient_name']} [{req['patient_id']}]",
                url_for('review_results', request_id=request_id))
-        flash("Results uploaded. Doctor notified.", 'success')
+        flash("Results uploaded successfully. Doctor has been notified.", 'success')
         return redirect(url_for('lab_dashboard'))
 
-    img_features = session.pop('img_features', None)
-    return render_template('upload_results.html', user=cu(),
-                           req=req, features=FEATURES,
-                           feat_values=img_features or FEATURE_DEFAULTS.copy(),
-                           feature_defaults=FEATURE_DEFAULTS,
-                           img_loaded=img_features is not None)
+    return render_template('upload_results.html', user=cu(), req=req)
 
 @app.route('/lab/image-extract', methods=['POST'])
 @role_required('lab','admin')
 def lab_image_extract():
+    """Redirect — no longer needed, image upload is in upload_results directly."""
     rid = request.form.get('request_id')
-    f   = request.files.get('image')
-    if not f or not f.filename:
-        flash('Select an image.','danger')
-        return redirect(url_for('upload_results', request_id=rid))
-    from src.services.image_processor_advanced import extract_features
-    from src.services.cnn_predictor import cnn_validate_image
-
-    try:
-        image_bytes = f.read()
-
-        # ── CNN image validation ──────────────────────────────────────────────
-        val = cnn_validate_image(image_bytes)
-        method = "CNN" if val['cnn_used'] else "heuristic"
-        if not val['is_valid']:
-            flash(
-                f'❌ Image rejected ({method} validation, '
-                f'confidence={val["confidence"]:.0f}%): {val["reason"]}',
-                'danger'
-            )
-            flash('Please upload a valid breast tissue (FNA/H&E stained) image.', 'danger')
-            return redirect(url_for('upload_results', request_id=rid))
-
-        # ── Extract Wisconsin features ────────────────────────────────────────
-        features = extract_features(image_bytes)
-        extracted = {k: float(features.get(k, FEATURE_DEFAULTS[k])) for k in FEATURES}
-        session['img_features'] = extracted
-        flash(
-            f'✅ Image validated ({method}, confidence={val["confidence"]:.0f}%). '
-            f'Features extracted — review values below.',
-            'success'
-        )
-    except Exception as e:
-        flash(f'Image processing failed: {e}', 'danger')
     return redirect(url_for('upload_results', request_id=rid))
-
-@app.route('/api/extract-features', methods=['POST'])
-def api_extract_features():
-    """JSON endpoint — returns extracted features for live form fill."""
-    if 'user_id' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
-    if session.get('role') not in ('lab', 'admin'):
-        return jsonify({'error': 'Access restricted'}), 403
-    f = request.files.get('image')
-    if not f or not f.filename:
-        return jsonify({'error': 'No image provided'}), 400
-    from src.services.image_processor_advanced import extract_features
-    from src.services.cnn_predictor import cnn_validate_image
-    import math
-    try:
-        image_bytes = f.read()
-
-        # ── CNN image validation ──────────────────────────────────────────────
-        val = cnn_validate_image(image_bytes)
-        method = "CNN" if val['cnn_used'] else "heuristic"
-        if not val['is_valid']:
-            return jsonify({
-                'error': (
-                    f'Image rejected ({method} validation): {val["reason"]} '
-                    f'Please upload a valid breast tissue image.'
-                ),
-                'validation_failed': True,
-                'confidence': val['confidence'],
-                'cnn_used':   val['cnn_used'],
-            }), 400
-
-        # ── Extract Wisconsin features ────────────────────────────────────────
-        features = extract_features(image_bytes)
-        extracted = {}
-        for k in FEATURES:
-            raw = features.get(k, FEATURE_DEFAULTS[k])
-            try:
-                v = float(raw)
-                if math.isnan(v) or math.isinf(v) or v == 0.0:
-                    v = float(FEATURE_DEFAULTS[k])
-            except (TypeError, ValueError):
-                v = float(FEATURE_DEFAULTS[k])
-            extracted[k] = round(v, 6)
-
-        return jsonify({
-            'features':   extracted,
-            'warning':    val['confidence'] < 60,
-            'confidence': val['confidence'],
-            'cnn_used':   val['cnn_used'],
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 # ── STEP 4: Doctor — Review & Diagnose ────────────────────────────────────────
 @app.route('/results/review/<request_id>', methods=['GET','POST'])
@@ -1266,89 +1078,71 @@ def review_results(request_id):
     req = col('lab_requests').find_one({'_id': oid(request_id)})
     lab = col('lab_results').find_one({'request_id': request_id})
     if not req or not lab:
-        flash('Results not found.','danger')
+        flash('Results not found.', 'danger')
         return redirect(url_for('lab_requests_list'))
     req = doc(req); lab = doc(lab)
     pt  = col('patients').find_one({'patient_id': req['patient_id']})
-    req['patient_name']   = pt['full_name']    if pt else '—'
-    req['date_of_birth']  = pt.get('date_of_birth','') if pt else '—'
-    req['gender']         = pt.get('gender','') if pt else '—'
-    req['contact']        = pt.get('contact','') if pt else '—'
+    req['patient_name']  = pt['full_name']           if pt else '—'
+    req['date_of_birth'] = pt.get('date_of_birth','') if pt else '—'
+    req['gender']        = pt.get('gender','')         if pt else '—'
+    req['contact']       = pt.get('contact','')        if pt else '—'
     lab_user = col('users').find_one({'_id': oid(lab.get('submitted_by',''))})
     lab['lab_name'] = lab_user['full_name'] if lab_user else '—'
 
-    feat_values = lab.get('features', FEATURE_DEFAULTS.copy())
-
     if request.method == 'POST':
-        from src.services.cnn_predictor import cnn_predict_image, cnn_available
+        from src.services.cnn_predictor import cnn_predict_image
 
-        # ── Primary: CNN prediction from IDC-trained image model ─────────────
-        result     = None
-        confidence = 0.0
-        cnn_result = None
-        cnn_conf   = None
-        cnn_used   = False
+        if not lab.get('image_path'):
+            flash('⚠️ No image found. The lab technician must upload a tissue slide image first.', 'danger')
+            return render_template('review_results.html', user=cu(), req=req, lab_result=lab)
 
-        if lab.get('image_path'):
-            try:
-                img_full = os.path.join(app.config['UPLOAD_FOLDER'], lab['image_path'])
-                if os.path.exists(img_full):
-                    with open(img_full, 'rb') as _f:
-                        img_bytes = _f.read()
-                    cp = cnn_predict_image(img_bytes)
-                    if cp.get('available') and not cp.get('unrelated') and cp['result'] is not None:
-                        cnn_result = cp['result']
-                        cnn_conf   = cp['confidence']
-                        cnn_used   = True
-                        result     = cnn_result
-                        confidence = cnn_conf
-            except Exception as _e:
-                print(f"[CNN pred] error: {_e}")
+        img_full = os.path.join(app.config['UPLOAD_FOLDER'], lab['image_path'])
+        if not os.path.exists(img_full):
+            flash('⚠️ Image file not found on server. Please ask the lab technician to re-upload.', 'danger')
+            return render_template('review_results.html', user=cu(), req=req, lab_result=lab)
 
-        # ── Fallback: Logistic Regression on 30 Wisconsin features ───────────
-        if result is None:
-            adj = {}
-            for f in FEATURES:
-                try:    adj[f] = float(request.form.get(f, feat_values.get(f, 0)))
-                except: adj[f] = feat_values.get(f, 0.0)
+        try:
+            with open(img_full, 'rb') as _f:
+                img_bytes = _f.read()
+            cp = cnn_predict_image(img_bytes)
+        except Exception as e:
+            flash(f'CNN prediction failed: {e}', 'danger')
+            return render_template('review_results.html', user=cu(), req=req, lab_result=lab)
 
-            defaults_matched = sum(
-                1 for k in FEATURES
-                if abs(adj.get(k, 0) - FEATURE_DEFAULTS.get(k, 0)) < 0.0001
-            )
-            if defaults_matched >= len(FEATURES) - 2:
-                flash('⚠️ Cannot run prediction: no image available for CNN analysis and '
-                      'feature values are still at defaults. '
-                      'Please upload a valid H&E tissue slide image.', 'danger')
-                return render_template('review_results.html', user=cu(),
-                                       req=req, lab_result=lab,
-                                       features=FEATURES, feat_values=feat_values,
-                                       feature_defaults=FEATURE_DEFAULTS)
+        if not cp.get('available'):
+            flash('⚠️ CNN model not available. Please ensure tensorflow is installed.', 'danger')
+            return render_template('review_results.html', user=cu(), req=req, lab_result=lab)
 
-            result, confidence = run_prediction(adj)
-            flash('ℹ️ CNN model used image analysis. Logistic Regression used as fallback '
-                  'from cell nucleus features.', 'info')
-        else:
-            # Use form features for stage calculation only
-            adj = {}
-            for f in FEATURES:
-                try:    adj[f] = float(request.form.get(f, feat_values.get(f, 0)))
-                except: adj[f] = feat_values.get(f, 0.0)
+        if cp.get('unrelated') or cp['result'] is None:
+            flash('⚠️ The uploaded image does not appear to be a valid tissue slide. '
+                  'Please ask the lab technician to re-upload a proper H&E stained image.', 'danger')
+            return render_template('review_results.html', user=cu(), req=req, lab_result=lab)
 
-        stage = determine_stage(adj) if result == 1 else None
+        result     = cp['result']       # 0=Benign, 1=Malignant
+        confidence = cp['confidence']   # 0–100
+
+        # CNN-based stage estimation using probability strength
+        stage = None
+        if result == 1:
+            p_mal = cp.get('probability', 0.5)
+            if p_mal < 0.65:   stage = 'Stage I'
+            elif p_mal < 0.80: stage = 'Stage II'
+            elif p_mal < 0.92: stage = 'Stage III'
+            else:              stage = 'Stage IV'
 
         col('predictions').insert_one({
             'patient_id':     req['patient_id'],
             'request_id':     request_id,
             'lab_result_id':  lab['id'],
-            'features':       adj,
             'result':         result,
             'confidence':     confidence,
             'stage':          stage,
-            'cnn_result':     cnn_result,
-            'cnn_confidence': cnn_conf,
-            'cnn_used':       cnn_used,
-            'model_used':     'IDC-CNN' if cnn_used else 'Logistic-Regression',
+            'model_used':     'IDC-CNN (MobileNetV2)',
+            'cnn_result':     result,
+            'cnn_confidence': confidence,
+            'cnn_used':       True,
+            'p_benign':       cp.get('p_benign', 0),
+            'p_malignant':    cp.get('p_malignant', 0),
             'doctor_notes':   request.form.get('doctor_notes', ''),
             'determined_by':  session['user_id'],
             'created_at':     now_str(),
@@ -1357,7 +1151,6 @@ def review_results(request_id):
 
         lbl       = 'MALIGNANT' if result == 1 else 'BENIGN'
         stage_str = f' — {stage}' if stage else ''
-        model_lbl = 'IDC-CNN' if cnn_used else 'Feature Model'
 
         col('lab_requests').update_one(
             {'_id': oid(request_id)},
@@ -1365,16 +1158,13 @@ def review_results(request_id):
 
         notify_role('admin',
             f"🏥 {req['patient_name']} [{req['patient_id']}] → {lbl}{stage_str} "
-            f"({confidence:.1f}% via {model_lbl})",
+            f"({confidence:.1f}% — IDC-CNN)",
             url_for('all_predictions'))
 
-        flash(f"Determination saved: {lbl}{stage_str} ({confidence:.1f}% — {model_lbl})", 'success')
+        flash(f"Determination saved: {lbl}{stage_str} ({confidence:.1f}% — IDC-CNN)", 'success')
         return redirect(url_for('my_predictions'))
 
-    return render_template('review_results.html', user=cu(),
-                           req=req, lab_result=lab,
-                           features=FEATURES, feat_values=feat_values,
-                           feature_defaults=FEATURE_DEFAULTS)
+    return render_template('review_results.html', user=cu(), req=req, lab_result=lab)
 
 # ── Predictions ───────────────────────────────────────────────────────────────
 @app.route('/predictions/mine')

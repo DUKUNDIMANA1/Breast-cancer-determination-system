@@ -109,27 +109,28 @@ def _pred_story(pred, patient):
     story.append(Paragraph('Cell Nucleus Feature Values',
         ParagraphStyle('h3',fontSize=9,fontName='Helvetica-Bold',
                        textColor=colors.HexColor('#1e293b'),spaceAfter=3)))
-    features = pred.get('features', {})
-    items    = [(k, f'{v:.6f}') for k,v in features.items()]
-    fd       = [['Feature','Value','Feature','Value']]
-    for i in range(0, len(items), 2):
-        row = list(items[i]) + (list(items[i+1]) if i+1<len(items) else ['',''])
-        fd.append(row)
-    ft = Table(fd, colWidths=[60*mm,28*mm,60*mm,28*mm])
-    ft.setStyle(TableStyle([
-        ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1e293b')),
-        ('TEXTCOLOR',(0,0),(-1,0),colors.white),
-        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
-        ('FONTNAME',(0,1),(-1,-1),'Helvetica'),
-        ('FONTNAME',(0,1),(0,-1),'Helvetica-Bold'),
-        ('FONTNAME',(2,1),(2,-1),'Helvetica-Bold'),
-        ('FONTSIZE',(0,0),(-1,-1),8),
-        ('GRID',(0,0),(-1,-1),0.3,colors.HexColor('#cbd5e1')),
-        ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.HexColor('#f8fafc'),colors.white]),
-        ('PADDING',(0,0),(-1,-1),4),
-        ('ALIGN',(1,0),(1,-1),'RIGHT'),('ALIGN',(3,0),(3,-1),'RIGHT'),
+    # Show CNN model info instead of 30 Wisconsin features
+    model_used = pred.get('model_used', 'IDC-CNN')
+    p_ben  = pred.get('p_benign', '—')
+    p_mal  = pred.get('p_malignant', '—')
+    cnn_data = [
+        ['Model', model_used, 'Confidence', f"{pred.get('confidence',0):.1f}%"],
+        ['P(Benign)', f"{p_ben:.1f}%" if isinstance(p_ben, float) else str(p_ben),
+         'P(Malignant)', f"{p_mal:.1f}%" if isinstance(p_mal, float) else str(p_mal)],
+    ]
+    ct = Table(cnn_data, colWidths=[38*mm,57*mm,35*mm,60*mm])
+    ct.setStyle(TableStyle([
+        ('FONTNAME',(0,0),(-1,-1),'Helvetica'),
+        ('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),
+        ('FONTNAME',(2,0),(2,-1),'Helvetica-Bold'),
+        ('FONTSIZE',(0,0),(-1,-1),9),
+        ('BACKGROUND',(0,0),(0,-1),colors.HexColor('#e2e8f0')),
+        ('BACKGROUND',(2,0),(2,-1),colors.HexColor('#e2e8f0')),
+        ('ROWBACKGROUNDS',(0,0),(-1,-1),[colors.HexColor('#f8fafc'),colors.HexColor('#f1f5f9')]),
+        ('GRID',(0,0),(-1,-1),0.4,colors.HexColor('#cbd5e1')),
+        ('PADDING',(0,0),(-1,-1),5),
     ]))
-    story.append(ft)
+    story.append(ct)
 
     # Add Stage Information section
     if is_mal and pred.get('stage'):
