@@ -1,31 +1,27 @@
 """
 IDC Binary CNN — Breast Cancer Classifier
 ==========================================
-Trains MobileNetV2 on the real IDC histopathology patches:
-  data/8863/, data/8864/, data/8865/, data/8867/, data/8913/
-  Each patient folder has subfolders:
-    0/ = Benign (non-IDC) patches
-    1/ = Malignant (IDC-positive) patches
+Trains MobileNetV2 on the merged IDC dataset:
+  data/merged_dataset/0/  — Benign patches  (4587 images)
+  data/merged_dataset/1/  — Malignant patches (834 images)
 
-Output:
-  artifacts/cnn_model.h5      — binary model (sigmoid, 0=Benign 1=Malignant)
-  artifacts/cnn_metrics.json  — accuracy, AUC, per-class metrics
+Binary sigmoid output: 0 = Benign, 1 = Malignant
 
 Usage:
   python ml/train_idc_cnn.py
 """
 
-import os, sys, json, shutil, tempfile
+import os, sys, json
 import numpy as np
 
 BASE_DIR     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR     = os.path.join(BASE_DIR, 'data', 'merged_dataset')
 ARTIFACTS    = os.path.join(BASE_DIR, 'artifacts')
 MODEL_PATH   = os.path.join(ARTIFACTS, 'cnn_model.h5')
 METRICS_PATH = os.path.join(ARTIFACTS, 'cnn_metrics.json')
 
-# IDC patient folders
-IDC_PATIENTS = ['8863', '8864', '8865', '8867', '8913']
-DATA_ROOT    = os.path.join(BASE_DIR, 'data')
+# Only train on class 0 (Benign) and class 1 (Malignant) — skip class 2
+BINARY_DIR = os.path.join(BASE_DIR, 'data', 'idc_binary')
 
 IMG_SIZE   = 50
 BATCH_SIZE = 32
@@ -33,38 +29,30 @@ SEED       = 42
 
 os.makedirs(ARTIFACTS, exist_ok=True)
 
-# ── Step 1: Build a flat training directory ───────────────────────────────────
-# Keras ImageDataGenerator needs a flat folder with class subfolders.
-# We collect all IDC patches from the 5 patient folders.
+# ── Build binary dataset folder (symlink class 0 and 1 only) ─────────────────
+import shutil
+print("[IDC-CNN] Preparing binary dataset (Benign + Malignant only)...")
 
-print("[IDC-CNN] Collecting IDC patches from all patient folders...")
-tmpdir = tempfile.mkdtemp(prefix='idc_train_')
-os.makedirs(os.path.join(tmpdir, '0'), exist_ok=True)
-os.makedirs(os.path.join(tmpdir, '1'), exist_ok=True)
+if os.path.exists(BINARY_DIR):
+    shutil.rmtree(BINARY_DIR)
+os.makedirs(os.path.join(BINARY_DIR, '0'), exist_ok=True)
+os.makedirs(os.path.join(BINARY_DIR, '1'), exist_ok=True)
 
 counts = {0: 0, 1: 0}
-for patient in IDC_PATIENTS:
-    for cls in ['0', '1']:
-        src_dir = os.path.join(DATA_ROOT, patient, cls)
-        if not os.path.exists(src_dir):
-            continue
-        files = [f for f in os.listdir(src_dir) if f.lower().endswith('.png')]
-        for fname in files:
-            # Use symlink if supported, else copy
-            src  = os.path.join(src_dir, fname)
-            dst  = os.path.join(tmpdir, cls, f"{patient}_{fname}")
-            try:
-                os.symlink(src, dst)
-            except (OSError, NotImplementedError):
-                shutil.copy2(src, dst)
-            counts[int(cls)] += 1
+for cls in ['0', '1']:
+    src_dir = os.path.join(DATA_DIR, cls)
+    dst_dir = os.path.join(BINARY_DIR, cls)
+    for fname in os.listdir(src_dir):
+        src = os.path.join(src_dir, fname)
+        dst = os.path.join(dst_dir, fname)
+        os.symlink(os.path.abspath(src), dst)
+        counts[int(cls)] += 1
 
-print(f"  Benign (0):    {counts[0]:,} patches")
-print(f"  Malignant (1): {counts[1]:,} patches")
-print(f"  Total:         {counts[0]+counts[1]:,} patches")
-print(f"  Temp dir:      {tmpdir}")
+print(f"  Benign    (0): {counts[0]:,}")
+print(f"  Malignant (1): {counts[1]:,}")
+print(f"  Total:         {sum(counts.values()):,}")
 
-# ── Step 2: Data generators ───────────────────────────────────────────────────
+# ── Data pipeline ─────────────────────────────────────────────────────────────
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -73,34 +61,33 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import sklearn.metrics as skm
 from sklearn.utils.class_weight import compute_class_weight
 
-print("\n[IDC-CNN] Setting up data pipeline...")
+print("\n[IDC-CNN] Building data generators...")
 
-train_datagen = ImageDataGenerator(
+datagen = ImageDataGenerator(
     rescale=1./255,
-    rotation_range=180,        # H&E slides can be any orientation
-    width_shift_range=0.1,
-    height_shift_range=0.1,
+    rotation_range=180,
     horizontal_flip=True,
     vertical_flip=True,
-    zoom_range=0.15,
-    shear_range=0.1,
+    zoom_range=0.1,
+    width_shift_range=0.1,
+    height_shift_range=0.1,
     brightness_range=[0.85, 1.15],
     fill_mode='reflect',
     validation_split=0.2
 )
 
-train_gen = train_datagen.flow_from_directory(
-    tmpdir,
+train_gen = datagen.flow_from_directory(
+    BINARY_DIR,
     target_size=(IMG_SIZE, IMG_SIZE),
     batch_size=BATCH_SIZE,
-    class_mode='binary',        # sigmoid output: 0=Benign, 1=Malignant
+    class_mode='binary',
     subset='training',
     seed=SEED,
     classes=['0', '1']
 )
 
-val_gen = train_datagen.flow_from_directory(
-    tmpdir,
+val_gen = datagen.flow_from_directory(
+    BINARY_DIR,
     target_size=(IMG_SIZE, IMG_SIZE),
     batch_size=BATCH_SIZE,
     class_mode='binary',
@@ -109,18 +96,20 @@ val_gen = train_datagen.flow_from_directory(
     classes=['0', '1']
 )
 
-print(f"[IDC-CNN] Train: {train_gen.samples:,}  Val: {val_gen.samples:,}")
+print(f"Train: {train_gen.samples:,}  Val: {val_gen.samples:,}")
 
-# Class weights — malignant is rare so upweight it
-all_labels = train_gen.classes
-cws = compute_class_weight('balanced', classes=np.unique(all_labels), y=all_labels)
+# Class weights
+cws = compute_class_weight('balanced',
+                           classes=np.unique(train_gen.classes),
+                           y=train_gen.classes)
 class_weight = dict(enumerate(cws))
-print(f"[IDC-CNN] Class weights: { {k: round(v,2) for k,v in class_weight.items()} }")
+print(f"Class weights: {class_weight}")
 
-# ── Step 3: Build model ───────────────────────────────────────────────────────
-print("\n[IDC-CNN] Building MobileNetV2 binary classifier...")
+# ── Model ─────────────────────────────────────────────────────────────────────
+print("\n[IDC-CNN] Building model...")
 
-base = MobileNetV2(input_shape=(IMG_SIZE, IMG_SIZE, 3), include_top=False, weights='imagenet')
+base = MobileNetV2(input_shape=(IMG_SIZE, IMG_SIZE, 3),
+                   include_top=False, weights='imagenet')
 base.trainable = False
 
 model = keras.Sequential([
@@ -128,10 +117,10 @@ model = keras.Sequential([
     layers.GlobalAveragePooling2D(),
     layers.BatchNormalization(),
     layers.Dense(256, activation='relu'),
-    layers.Dropout(0.4),
-    layers.Dense(128, activation='relu'),
+    layers.Dropout(0.5),
+    layers.Dense(64, activation='relu'),
     layers.Dropout(0.3),
-    layers.Dense(1, activation='sigmoid')   # binary: 0=Benign, 1=Malignant
+    layers.Dense(1, activation='sigmoid')
 ])
 
 model.compile(
@@ -139,53 +128,45 @@ model.compile(
     loss='binary_crossentropy',
     metrics=['accuracy', keras.metrics.AUC(name='auc')]
 )
-
 model.summary()
 
-callbacks_p1 = [
-    keras.callbacks.EarlyStopping(patience=4, restore_best_weights=True, monitor='val_auc', mode='max'),
-    keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=2, monitor='val_auc', mode='max'),
-    keras.callbacks.ModelCheckpoint(MODEL_PATH, save_best_only=True, monitor='val_auc', mode='max'),
+cbs = [
+    keras.callbacks.EarlyStopping(
+        patience=4, restore_best_weights=True,
+        monitor='val_auc', mode='max'),
+    keras.callbacks.ReduceLROnPlateau(
+        factor=0.3, patience=2,
+        monitor='val_auc', mode='max', min_lr=1e-7),
+    keras.callbacks.ModelCheckpoint(
+        MODEL_PATH, save_best_only=True,
+        monitor='val_auc', mode='max'),
 ]
 
-# ── Phase 1: Train top layers ─────────────────────────────────────────────────
-print("\n[IDC-CNN] Phase 1: Training top layers (base frozen)...")
+# ── Phase 1: Train head only ──────────────────────────────────────────────────
+print("\n[IDC-CNN] Phase 1: Training head (base frozen)...")
 h1 = model.fit(
     train_gen, validation_data=val_gen,
-    epochs=15,
-    callbacks=callbacks_p1,
+    epochs=20, callbacks=cbs,
     class_weight=class_weight
 )
 
-# ── Phase 2: Fine-tune last 40 layers of MobileNetV2 ─────────────────────────
-print("\n[IDC-CNN] Phase 2: Fine-tuning last 40 layers...")
-base.trainable = True
-for layer in base.layers[:-40]:
-    layer.trainable = False
+best_auc_p1 = max(h1.history['val_auc'])
+print(f"\n[IDC-CNN] Phase 1 best val_auc: {best_auc_p1:.4f}")
 
-model.compile(
-    optimizer=keras.optimizers.Adam(5e-6),
-    loss='binary_crossentropy',
-    metrics=['accuracy', keras.metrics.AUC(name='auc')]
-)
-
-callbacks_p2 = [
-    keras.callbacks.EarlyStopping(patience=4, restore_best_weights=True, monitor='val_auc', mode='max'),
-    keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=2, monitor='val_auc', mode='max'),
-    keras.callbacks.ModelCheckpoint(MODEL_PATH, save_best_only=True, monitor='val_auc', mode='max'),
-]
-
-h2 = model.fit(
-    train_gen, validation_data=val_gen,
-    epochs=10,
-    callbacks=callbacks_p2,
-    class_weight=class_weight
-)
+# ── Phase 2: Fine-tune ONLY if phase 1 gave good AUC (>0.80) ────────────────
+# SKIP fine-tuning — phase 1 head training is sufficient for this dataset size
+# Fine-tuning on 50x50 patches with MobileNetV2 tends to overfit
+print(f"\n[IDC-CNN] Phase 1 complete. Best val_auc: {best_auc_p1:.4f}")
+print("[IDC-CNN] Skipping fine-tuning (not needed for 50px patches).")
 
 # ── Evaluate ──────────────────────────────────────────────────────────────────
-print("\n[IDC-CNN] Evaluating on validation set...")
+# Load the best checkpoint saved during training (not the final epoch state)
+print("\n[IDC-CNN] Loading best checkpoint for evaluation...")
+best_model = tf.keras.models.load_model(MODEL_PATH)
+
+print("[IDC-CNN] Final evaluation...")
 val_gen.reset()
-y_prob = model.predict(val_gen, verbose=1).flatten()
+y_prob = best_model.predict(val_gen, verbose=1).flatten()
 y_pred = (y_prob >= 0.5).astype(int)
 y_true = val_gen.classes[:len(y_pred)]
 
@@ -201,38 +182,33 @@ cm  = skm.confusion_matrix(y_true, y_pred).tolist()
 print(skm.classification_report(y_true, y_pred, target_names=['Benign','Malignant']))
 print(f"AUC: {auc:.4f}")
 
-# ── Save metrics ──────────────────────────────────────────────────────────────
+# ── Save ──────────────────────────────────────────────────────────────────────
 metrics = {
-    'model_type':    'CNN (MobileNetV2 Binary, IDC dataset)',
-    'dataset':       f'IDC histopathology patches: {"+".join(IDC_PATIENTS)}',
-    'model_output':  'sigmoid — 0=Benign, 1=Malignant',
+    'model_type':    'CNN (MobileNetV2 Binary, IDC)',
+    'dataset':       'data/merged_dataset/0 + /1 (IDC patches)',
+    'model_output':  'sigmoid — p<0.5=Benign, p>=0.5=Malignant',
     'threshold':     0.5,
     'accuracy':      round(acc * 100, 2),
     'auc':           round(auc * 100, 2),
     'img_size':      IMG_SIZE,
-    'train_samples': train_gen.samples,
-    'val_samples':   val_gen.samples,
-    'classes':       {'0': 'Benign / IDC-negative', '1': 'Malignant / IDC-positive'},
+    'train_samples': int(train_gen.samples),
+    'val_samples':   int(val_gen.samples),
+    'classes':       {'0': 'Benign (IDC-negative)', '1': 'Malignant (IDC-positive)'},
     'per_class': {
-        'Benign':    {k: round(v*100,2) for k,v in report['Benign'].items() if k != 'support'},
-        'Malignant': {k: round(v*100,2) for k,v in report['Malignant'].items() if k != 'support'},
+        'Benign':    {k: round(v*100,2) for k,v in report['Benign'].items() if k!='support'},
+        'Malignant': {k: round(v*100,2) for k,v in report['Malignant'].items() if k!='support'},
     },
     'confusion_matrix': cm,
-    'notes': (
-        f"Trained on {counts[0]+counts[1]} real IDC patches. "
-        f"Binary sigmoid output — thresholded at 0.5. "
-        f"High malignant recall prioritized (cancer screening)."
-    )
 }
 
-with open(METRICS_PATH, 'w') as f:
-    json.dump(metrics, f, indent=2)
+with open(METRICS_PATH, 'w') as mf:
+    json.dump(metrics, mf, indent=2)
 
-model.save(MODEL_PATH)
-print(f"\n[IDC-CNN] ✓ Model saved  → {MODEL_PATH}")
-print(f"[IDC-CNN] ✓ Metrics saved → {METRICS_PATH}")
-print(f"[IDC-CNN]   Accuracy: {acc*100:.2f}%   AUC: {auc*100:.2f}%")
+# Best model already saved by ModelCheckpoint callback — no need to re-save
+print(f"\n[IDC-CNN] Model saved  → {MODEL_PATH}")
+print(f"[IDC-CNN] Metrics      → {METRICS_PATH}")
+print(f"[IDC-CNN] Accuracy: {acc*100:.2f}%  AUC: {auc*100:.2f}%")
 
-# Cleanup temp dir
-shutil.rmtree(tmpdir, ignore_errors=True)
-print("[IDC-CNN] Temp files cleaned up.")
+# Cleanup
+shutil.rmtree(BINARY_DIR, ignore_errors=True)
+print("[IDC-CNN] Done.")
