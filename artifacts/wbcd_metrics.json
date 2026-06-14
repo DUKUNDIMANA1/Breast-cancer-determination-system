@@ -1,0 +1,48 @@
+{
+  "model_type": "WBCD \u2014 LogisticRegression",
+  "dataset": "Wisconsin Breast Cancer Dataset (569 samples, 30 features)",
+  "accuracy": 96.49,
+  "roc_auc": 99.6,
+  "sensitivity": 92.86,
+  "specificity": 98.61,
+  "precision_malignant": 97.5,
+  "recall_malignant": 92.86,
+  "f1_malignant": 95.12,
+  "precision_benign": 95.95,
+  "recall_benign": 98.61,
+  "f1_benign": 97.26,
+  "confusion_matrix": {
+    "TN": 71,
+    "FP": 1,
+    "FN": 3,
+    "TP": 39
+  },
+  "train_samples": 455,
+  "test_samples": 114,
+  "all_models": {
+    "LogisticRegression": {
+      "accuracy": 96.49,
+      "auc": 99.6,
+      "cv_auc": 99.58
+    },
+    "RandomForest": {
+      "accuracy": 96.49,
+      "auc": 99.42,
+      "cv_auc": 98.89
+    },
+    "GradientBoosting": {
+      "accuracy": 96.49,
+      "auc": 99.54,
+      "cv_auc": 99.12
+    },
+    "SVM": {
+      "accuracy": 97.37,
+      "auc": 99.27,
+      "cv_auc": 99.37
+    }
+  },
+  "classes": {
+    "0": "Benign",
+    "1": "Malignant"
+  }
+}
