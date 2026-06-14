@@ -47,7 +47,15 @@ def load_cnn():
     if _cnn_model is not None:
         return _cnn_model
 
-    import tensorflow as tf
+    # Gracefully handle missing TensorFlow
+    try:
+        import tensorflow as tf
+    except ImportError:
+        print("[CNN] TensorFlow not installed — CNN validation unavailable. Using heuristic fallback.")
+        return None
+    except Exception as e:
+        print(f"[CNN] TensorFlow import error: {e} — using heuristic fallback.")
+        return None
 
     # Try primary .h5 path first
     for path in [MODEL_PATH, CHECKPOINT_PATH]:
@@ -69,7 +77,10 @@ def load_cnn():
 
 def _decode_and_resize(image_bytes):
     """Decode image bytes → normalised (1, IMG_SIZE, IMG_SIZE, 3) array."""
-    import cv2
+    try:
+        import cv2
+    except ImportError:
+        raise RuntimeError("opencv-python-headless not installed")
     nparr = np.frombuffer(image_bytes, np.uint8)
     img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
