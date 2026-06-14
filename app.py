@@ -1280,12 +1280,54 @@ def review_results(request_id):
 
     feat_values = lab.get('features', FEATURE_DEFAULTS.copy())
 
-    if request.method == 'POST':
-        from src.services.cnn_predictor import cnn_predict_image, cnn_available
+    # Load WBCD metrics for display (used in both GET and POST error returns)
+    wbcd_accuracy = '96.49'
+    wbcd_auc      = '99.60'
+    try:
+        mp = os.path.join(BASE_DIR, 'artifacts', 'wbcd_metrics.json')
+        if os.path.exists(mp):
+            with open(mp) as _mf:
+                _m = json.load(_mf)
+            wbcd_accuracy = str(_m.get('accuracy', '96.49'))
+            wbcd_auc      = str(_m.get('roc_auc',  '99.60'))
+    except Exception:
+        pass
+    from src.services.cnn_predictor import cnn_available as _cnn_avail
 
-        # ── Primary: CNN prediction from IDC-trained image model ─────────────
-        result     = None
-        confidence = 0.0
+    def _render_review():
+        return render_template('review_results.html', user=cu(),
+                               req=req, lab_result=lab,
+                               features=FEATURES, feat_values=feat_values,
+                               feature_defaults=FEATURE_DEFAULTS,
+                               wbcd_accuracy=wbcd_accuracy,
+                               wbcd_auc=wbcd_auc,
+                               cnn_available=_cnn_avail())
+
+    if request.method == 'POST':
+        from src.services.cnn_predictor import cnn_predict_image
+
+        # ── Get 30 feature values from form (primary source for LR) ──────────
+        adj = {}
+        for f in FEATURES:
+            try:    adj[f] = float(request.form.get(f, feat_values.get(f, 0)))
+            except: adj[f] = feat_values.get(f, 0.0)
+
+        # Block if all features are still at defaults
+        defaults_matched = sum(
+            1 for k in FEATURES
+            if abs(adj.get(k, 0) - FEATURE_DEFAULTS.get(k, 0)) < 0.0001
+        )
+        if defaults_matched >= len(FEATURES) - 2:
+            flash('⚠️ Feature values are still at defaults. '
+                  'Please upload a tissue image and extract features, '
+                  'or manually enter the cell nucleus measurements.', 'danger')
+            return _render_review()
+
+        # ── Primary: Logistic Regression on 30 WBCD features ─────────────────
+        result, confidence = run_prediction(adj)
+        stage = determine_stage(adj) if result == 1 else None
+
+        # ── Secondary: CNN prediction from image (informational) ──────────────
         cnn_result = None
         cnn_conf   = None
         cnn_used   = False
@@ -1301,42 +1343,19 @@ def review_results(request_id):
                         cnn_result = cp['result']
                         cnn_conf   = cp['confidence']
                         cnn_used   = True
-                        result     = cnn_result
-                        confidence = cnn_conf
+                        # If CNN and LR disagree, warn the doctor
+                        if cnn_result != result:
+                            cnn_lbl = 'MALIGNANT' if cnn_result == 1 else 'BENIGN'
+                            lr_lbl  = 'MALIGNANT' if result == 1 else 'BENIGN'
+                            flash(
+                                f'ℹ️ Note: CNN image analysis suggests {cnn_lbl} '
+                                f'({cnn_conf:.1f}%) while cell feature model says {lr_lbl} '
+                                f'({confidence:.1f}%). The feature-based result is used as the '
+                                f'primary determination. Clinical judgment recommended.',
+                                'warning'
+                            )
             except Exception as _e:
                 print(f"[CNN pred] error: {_e}")
-
-        # ── Fallback: Logistic Regression on 30 Wisconsin features ───────────
-        if result is None:
-            adj = {}
-            for f in FEATURES:
-                try:    adj[f] = float(request.form.get(f, feat_values.get(f, 0)))
-                except: adj[f] = feat_values.get(f, 0.0)
-
-            defaults_matched = sum(
-                1 for k in FEATURES
-                if abs(adj.get(k, 0) - FEATURE_DEFAULTS.get(k, 0)) < 0.0001
-            )
-            if defaults_matched >= len(FEATURES) - 2:
-                flash('⚠️ Cannot run prediction: no image available for CNN analysis and '
-                      'feature values are still at defaults. '
-                      'Please upload a valid H&E tissue slide image.', 'danger')
-                return render_template('review_results.html', user=cu(),
-                                       req=req, lab_result=lab,
-                                       features=FEATURES, feat_values=feat_values,
-                                       feature_defaults=FEATURE_DEFAULTS)
-
-            result, confidence = run_prediction(adj)
-            flash('ℹ️ CNN model used image analysis. Logistic Regression used as fallback '
-                  'from cell nucleus features.', 'info')
-        else:
-            # Use form features for stage calculation only
-            adj = {}
-            for f in FEATURES:
-                try:    adj[f] = float(request.form.get(f, feat_values.get(f, 0)))
-                except: adj[f] = feat_values.get(f, 0.0)
-
-        stage = determine_stage(adj) if result == 1 else None
 
         col('predictions').insert_one({
             'patient_id':     req['patient_id'],
@@ -1349,7 +1368,7 @@ def review_results(request_id):
             'cnn_result':     cnn_result,
             'cnn_confidence': cnn_conf,
             'cnn_used':       cnn_used,
-            'model_used':     'IDC-CNN' if cnn_used else 'Logistic-Regression',
+            'model_used':     'Logistic-Regression (WBCD)',
             'doctor_notes':   request.form.get('doctor_notes', ''),
             'determined_by':  session['user_id'],
             'created_at':     now_str(),
@@ -1358,7 +1377,7 @@ def review_results(request_id):
 
         lbl       = 'MALIGNANT' if result == 1 else 'BENIGN'
         stage_str = f' — {stage}' if stage else ''
-        model_lbl = 'IDC-CNN' if cnn_used else 'Feature Model'
+        model_lbl = 'LR-WBCD' + (' + CNN' if cnn_used else '')
 
         col('lab_requests').update_one(
             {'_id': oid(request_id)},
@@ -1372,27 +1391,7 @@ def review_results(request_id):
         flash(f"Determination saved: {lbl}{stage_str} ({confidence:.1f}% — {model_lbl})", 'success')
         return redirect(url_for('my_predictions'))
 
-    # Load WBCD metrics for display
-    wbcd_accuracy = '96.49'
-    wbcd_auc      = '99.60'
-    try:
-        mp = os.path.join(BASE_DIR, 'artifacts', 'wbcd_metrics.json')
-        if os.path.exists(mp):
-            with open(mp) as _mf:
-                _m = json.load(_mf)
-            wbcd_accuracy = str(_m.get('accuracy', '96.49'))
-            wbcd_auc      = str(_m.get('roc_auc',  '99.60'))
-    except Exception:
-        pass
-
-    from src.services.cnn_predictor import cnn_available as _cnn_avail
-    return render_template('review_results.html', user=cu(),
-                           req=req, lab_result=lab,
-                           features=FEATURES, feat_values=feat_values,
-                           feature_defaults=FEATURE_DEFAULTS,
-                           wbcd_accuracy=wbcd_accuracy,
-                           wbcd_auc=wbcd_auc,
-                           cnn_available=_cnn_avail())
+    return _render_review()
 
 # ── Predictions ───────────────────────────────────────────────────────────────
 @app.route('/predictions/mine')
