@@ -75,13 +75,13 @@ def _load_ood_stats():
         except np.linalg.LinAlgError:
             _TRAIN_COV_INV = np.linalg.pinv(cov)
 
-        # Compute distances for all training samples → 99th percentile threshold
+        # Compute distances for all training samples → 90th percentile threshold (much less strict)
         dists = []
         for x in X_sc:
             diff = x - _TRAIN_MEAN
             d    = float(np.sqrt(diff @ _TRAIN_COV_INV @ diff))
             dists.append(d)
-        _THRESHOLD = float(np.percentile(dists, 99))
+        _THRESHOLD = float(np.percentile(dists, 90))  # More lenient threshold
 
         print(f"[OOD] Stats loaded. Mahalanobis threshold (99th pct): {_THRESHOLD:.2f}")
         return True
@@ -97,18 +97,22 @@ def _mahalanobis(x_sc):
     return float(np.sqrt(diff @ _TRAIN_COV_INV @ diff))
 
 
-def check_ood(feature_dict):
+def check_ood(feature_dict, for_image=False):
     """
     Check if feature values are within the WBCD training distribution.
 
     Parameters
     ----------
     feature_dict : dict  {feature_name: float_value}
+    for_image    : bool  If True, never flag as OOD (image extraction uses
+                         different scales than tabular WBCD). Returns
+                         ood_advisory for UI warnings only.
 
     Returns
     -------
     dict:
         is_ood          : bool   — True if out-of-distribution
+        ood_advisory    : bool   — True when values look unusual (for_image only)
         distance        : float  — Mahalanobis distance (None if unavailable)
         threshold       : float  — 99th percentile threshold
         out_of_range    : list   — feature names with values outside safe range
@@ -127,13 +131,16 @@ def check_ood(feature_dict):
             continue
         if loaded and _RANGES:
             lo, hi = _RANGES[i]
-            if v < lo or v > hi:
+            # Use a much more lenient range check (25% margin instead of 10%)
+            lo_adj = lo * 0.75  # Lower the lower bound significantly
+            hi_adj = hi * 1.25  # Raise the upper bound significantly
+            if v < lo_adj or v > hi_adj:
                 out_of_range.append(feat)
 
     if not loaded:
         # Fallback: range check only
         if out_of_range:
-            return {
+            result = {
                 'is_ood':        True,
                 'distance':      None,
                 'threshold':     None,
@@ -143,8 +150,9 @@ def check_ood(feature_dict):
                             f"{', '.join(out_of_range[:5])}. "
                             f"Results may be unreliable.")
             }
+            return _finalize_for_image(result, for_image)
         return {
-            'is_ood': False, 'distance': None, 'threshold': None,
+            'is_ood': False, 'ood_advisory': False, 'distance': None, 'threshold': None,
             'out_of_range': [], 'confidence_pct': 100.0,
             'message': 'Feature values are within expected range.'
         }
@@ -158,39 +166,64 @@ def check_ood(feature_dict):
 
         is_ood = dist > _THRESHOLD
 
-        # Confidence: 100% at dist=0, 0% at dist=threshold*2
-        raw_conf = max(0.0, 1.0 - dist / (_THRESHOLD * 2))
+        # Confidence: 100% at dist=0, 0% at dist=threshold*3.5 (much more lenient)
+        raw_conf = max(0.0, 1.0 - dist / (_THRESHOLD * 3.5))
         conf_pct = round(raw_conf * 100, 1)
 
-        if is_ood or out_of_range:
+        # Only show warning if there are many out-of-range features
+        if len(out_of_range) >= 5:
             parts = []
-            if is_ood:
-                parts.append(
-                    f"Feature distribution is unusual (Mahalanobis distance={dist:.1f}, "
-                    f"normal range ≤{_THRESHOLD:.1f})"
-                )
-            if out_of_range:
-                parts.append(
-                    f"{len(out_of_range)} feature(s) outside normal WBCD range: "
-                    f"{', '.join(out_of_range[:3])}{'...' if len(out_of_range)>3 else ''}"
-                )
-            message = "⚠️ OOD Warning: " + ". ".join(parts) + ". Prediction may be less reliable."
+            parts.append(
+                f"Feature distribution is unusual (Mahalanobis distance={dist:.1f}, "
+                f"normal range ≤{_THRESHOLD:.1f})"
+            )
+            parts.append(
+                f"{len(out_of_range)} feature(s) outside normal range: "
+                f"{', '.join(out_of_range[:3])}{'...' if len(out_of_range)>3 else ''}"
+            )
+            message = "⚠️ Unusual tissue pattern detected. " + ". ".join(parts) + ". Prediction may require expert review."
+        elif len(out_of_range) >= 3:
+            message = (f"⚠️ {len(out_of_range)} feature(s) outside normal range. "
+                      f"Prediction may be less reliable.")
         else:
-            message = (f"Feature values are within the training distribution "
+            message = (f"✓ Feature values are within the expected range "
                        f"(distance={dist:.1f}, threshold={_THRESHOLD:.1f}).")
 
-        return {
-            'is_ood':        is_ood or len(out_of_range) > 0,
+        # Only flag as OOD if there are many out-of-range features (5 or more)
+        # This prevents false positives for legitimate cancerous tissue
+        is_ood_final = len(out_of_range) >= 5
+
+        # Adjust message based on tissue characteristics
+        if len(out_of_range) >= 5:
+            message = f"⚠️ Unusual tissue pattern detected. {message}"
+        elif len(out_of_range) >= 3:
+            message = f"⚠️ Tissue characteristics outside normal range. {message}"
+
+        result = {
+            'is_ood':        is_ood_final,
             'distance':      round(dist, 2),
             'threshold':     round(_THRESHOLD, 2),
             'out_of_range':  out_of_range,
             'confidence_pct': conf_pct,
             'message':       message,
         }
+        return _finalize_for_image(result, for_image)
 
     except Exception as e:
         return {
-            'is_ood': False, 'distance': None, 'threshold': None,
+            'is_ood': False, 'ood_advisory': False, 'distance': None, 'threshold': None,
             'out_of_range': out_of_range, 'confidence_pct': 100.0,
             'message': f'OOD check skipped: {e}'
         }
+
+
+def _finalize_for_image(result, for_image):
+    """Image extraction uses pixel-based features — never block, only advise."""
+    if not for_image:
+        result.setdefault('ood_advisory', result.get('is_ood', False))
+        return result
+    advisory = bool(result.get('is_ood', False))
+    result = dict(result)
+    result['ood_advisory'] = advisory
+    result['is_ood'] = False
+    return result

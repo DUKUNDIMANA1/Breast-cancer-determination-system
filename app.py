@@ -1199,12 +1199,10 @@ def lab_image_extract():
         features = extract_features(image_bytes)
         extracted = {k: float(features.get(k, FEATURE_DEFAULTS[k])) for k in FEATURES}
 
-        # Reject feature sets that are outside the expected breast tissue distribution
-        ood = check_ood(extracted)
-        if ood['is_ood']:
-            flash(f'❌ Image rejected: {ood["message"]}', 'danger')
-            flash('Please upload a valid breast tissue (FNA/H&E stained) image.', 'danger')
-            return redirect(url_for('upload_results', request_id=rid))
+        # OOD check — warn only; image features often differ from tabular WBCD scale
+        ood = check_ood(extracted, for_image=True)
+        if ood.get('ood_advisory'):
+            flash(ood['message'], 'warning')
 
         session['img_features'] = extracted
         flash(
@@ -1259,25 +1257,9 @@ def api_extract_features():
                 v = float(FEATURE_DEFAULTS[k])
             extracted[k] = float(round(v, 6))
 
-        # ── OOD check on extracted features ──────────────────────────────────
+        # ── OOD check on extracted features (warn only, do not block upload) ─
         from src.services.ood_detector import check_ood
-        ood = check_ood(extracted)
-        if ood['is_ood']:
-            return jsonify({
-                'error': (
-                    f'Image rejected: {ood["message"]} '
-                    'Please upload a valid breast tissue image.'
-                ),
-                'validation_failed': True,
-                'confidence': float(val['confidence']),
-                'cnn_used': bool(val['cnn_used']),
-                'ood_flagged': True,
-                'ood_distance': float(ood.get('distance') or 0),
-                'ood_threshold': float(ood.get('threshold') or 0),
-                'ood_out_of_range': [str(x) for x in ood.get('out_of_range', [])],
-                'ood_confidence': float(ood.get('confidence_pct') or 0),
-                'ood_message': str(ood.get('message')),
-            }), 400
+        ood = check_ood(extracted, for_image=True)
 
         # Convert all numpy types to native Python for JSON serialization
         def _to_native(v):
@@ -1285,17 +1267,19 @@ def api_extract_features():
             try: return float(v)
             except: return v
 
+        ood_advisory = bool(ood.get('ood_advisory'))
         return jsonify({
+            'extract_policy':   'warn_only_v2',
             'features':         {k: float(v) for k, v in extracted.items()},
-            'warning':          bool(val['confidence'] < 60),
+            'warning':          bool(val['confidence'] < 60 or ood_advisory),
             'confidence':       float(val['confidence']),
             'cnn_used':         bool(val['cnn_used']),
-            'ood_flagged':      bool(ood['is_ood']),
+            'ood_flagged':      ood_advisory,
             'ood_distance':     _to_native(ood.get('distance')),
             'ood_threshold':    _to_native(ood.get('threshold')),
             'ood_out_of_range': [str(x) for x in ood.get('out_of_range', [])],
             'ood_confidence':   _to_native(ood.get('confidence_pct')),
-            'ood_message':      str(ood['message']) if ood['is_ood'] else None,
+            'ood_message':      str(ood['message']) if ood_advisory else None,
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500

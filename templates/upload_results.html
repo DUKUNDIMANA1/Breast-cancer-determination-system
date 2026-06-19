@@ -333,7 +333,10 @@ function extractFeatures() {
       const banner = document.getElementById('extracted-banner');
       const msg    = document.getElementById('extracted-msg');
       banner.style.display = '';
-      if (data.warning) {
+      if (data.ood_flagged) {
+        banner.className = 'alert alert-warning mb-12';
+        msg.textContent  = '✅ ' + filled + ' WBC features extracted successfully. ⚠️ Some values differ from typical WBCD ranges — review measurements below.';
+      } else if (data.warning) {
         banner.className = 'alert alert-warning mb-12';
         msg.textContent  = '⚠️ Image accepted with lower confidence (' + data.confidence + '%). ' + filled + ' WBC features extracted — review values carefully.';
       } else {
