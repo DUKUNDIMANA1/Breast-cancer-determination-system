@@ -1,8 +1,7 @@
 ﻿"""
 BreastCare AI — MongoDB Atlas Edition
 Roles: Receptionist → Doctor → Lab Technician → Doctor → Admin
-Model: Logistic Regression (WBCD) | Accuracy: 96.49% | AUC: 99.60%
-       + CNN Image Validator (IDC MobileNetV2) | Accuracy: 92.4%
+Model: Logistic Regression | Accuracy: 97.37%
 Database: MongoDB Atlas Cloud
 """
 
@@ -1280,59 +1279,34 @@ def review_results(request_id):
 
     feat_values = lab.get('features', FEATURE_DEFAULTS.copy())
 
-    # Load WBCD metrics for display (used in both GET and POST error returns)
-    wbcd_accuracy = '96.49'
-    wbcd_auc      = '99.60'
-    try:
-        mp = os.path.join(BASE_DIR, 'artifacts', 'wbcd_metrics.json')
-        if os.path.exists(mp):
-            with open(mp) as _mf:
-                _m = json.load(_mf)
-            wbcd_accuracy = str(_m.get('accuracy', '96.49'))
-            wbcd_auc      = str(_m.get('roc_auc',  '99.60'))
-    except Exception:
-        pass
-    from src.services.cnn_predictor import cnn_available as _cnn_avail
-
-    def _render_review():
-        return render_template('review_results.html', user=cu(),
-                               req=req, lab_result=lab,
-                               features=FEATURES, feat_values=feat_values,
-                               feature_defaults=FEATURE_DEFAULTS,
-                               wbcd_accuracy=wbcd_accuracy,
-                               wbcd_auc=wbcd_auc,
-                               cnn_available=_cnn_avail())
-
     if request.method == 'POST':
-        from src.services.cnn_predictor import cnn_predict_image
-
-        # ── Get 30 feature values from form (primary source for LR) ──────────
         adj = {}
         for f in FEATURES:
-            try:    adj[f] = float(request.form.get(f, feat_values.get(f, 0)))
+            try:    adj[f] = float(request.form.get(f, feat_values.get(f,0)))
             except: adj[f] = feat_values.get(f, 0.0)
 
-        # Block if all features are still at defaults
+        # Block prediction if all features match defaults exactly (unrelated image was uploaded)
         defaults_matched = sum(
             1 for k in FEATURES
             if abs(adj.get(k, 0) - FEATURE_DEFAULTS.get(k, 0)) < 0.0001
         )
         if defaults_matched >= len(FEATURES) - 2:
-            flash('⚠️ Feature values are still at defaults. '
-                  'Please upload a tissue image and extract features, '
-                  'or manually enter the cell nucleus measurements.', 'danger')
-            return _render_review()
+            flash('⚠️ Cannot run prediction: feature values appear to be defaults from an invalid image. '
+                  'Please upload a valid FNA tissue slide image and re-extract features, '
+                  'or manually enter the actual cell nucleus measurements.', 'danger')
+            return render_template('review_results.html', user=cu(),
+                                   req=req, lab_result=lab,
+                                   features=FEATURES, feat_values=feat_values,
+                                   feature_defaults=FEATURE_DEFAULTS)
 
-        # ── Primary: Logistic Regression on 30 WBCD features ─────────────────
         result, confidence = run_prediction(adj)
         stage = determine_stage(adj) if result == 1 else None
 
-        # ── Secondary: CNN prediction from image (informational) ──────────────
-        cnn_result = None
-        cnn_conf   = None
-        cnn_used   = False
-
-        if lab.get('image_path'):
+        # ── CNN secondary prediction (from stored image if available) ─────────
+        from src.services.cnn_predictor import cnn_predict_image, cnn_available
+        cnn_result = cnn_conf = None
+        cnn_used_for_pred = False
+        if cnn_available() and lab.get('image_path'):
             try:
                 img_full = os.path.join(app.config['UPLOAD_FOLDER'], lab['image_path'])
                 if os.path.exists(img_full):
@@ -1342,56 +1316,52 @@ def review_results(request_id):
                     if cp.get('available') and not cp.get('unrelated') and cp['result'] is not None:
                         cnn_result = cp['result']
                         cnn_conf   = cp['confidence']
-                        cnn_used   = True
-                        # If CNN and LR disagree, warn the doctor
+                        cnn_used_for_pred = True
                         if cnn_result != result:
-                            cnn_lbl = 'MALIGNANT' if cnn_result == 1 else 'BENIGN'
-                            lr_lbl  = 'MALIGNANT' if result == 1 else 'BENIGN'
                             flash(
-                                f'ℹ️ Note: CNN image analysis suggests {cnn_lbl} '
-                                f'({cnn_conf:.1f}%) while cell feature model says {lr_lbl} '
-                                f'({confidence:.1f}%). The feature-based result is used as the '
-                                f'primary determination. Clinical judgment recommended.',
+                                f'⚠️ Note: CNN image model suggests '
+                                f'{"MALIGNANT" if cnn_result==1 else "BENIGN"} '
+                                f'({cnn_conf:.1f}%) while feature model says '
+                                f'{"MALIGNANT" if result==1 else "BENIGN"} '
+                                f'({confidence:.1f}%). Consider both results.',
                                 'warning'
                             )
             except Exception as _e:
                 print(f"[CNN pred] error: {_e}")
 
         col('predictions').insert_one({
-            'patient_id':     req['patient_id'],
-            'request_id':     request_id,
-            'lab_result_id':  lab['id'],
-            'features':       adj,
-            'result':         result,
-            'confidence':     confidence,
-            'stage':          stage,
-            'cnn_result':     cnn_result,
-            'cnn_confidence': cnn_conf,
-            'cnn_used':       cnn_used,
-            'model_used':     'Logistic-Regression (WBCD)',
-            'doctor_notes':   request.form.get('doctor_notes', ''),
-            'determined_by':  session['user_id'],
-            'created_at':     now_str(),
-            'updated_at':     now_str()
+            'patient_id':        req['patient_id'],
+            'request_id':        request_id,
+            'lab_result_id':     lab['id'],
+            'features':          adj,
+            'result':            result,
+            'confidence':        confidence,
+            'stage':             stage,
+            'cnn_result':        cnn_result,
+            'cnn_confidence':    cnn_conf,
+            'cnn_used':          cnn_used_for_pred,
+            'doctor_notes':      request.form.get('doctor_notes',''),
+            'determined_by':     session['user_id'],
+            'created_at':        now_str(),
+            'updated_at':        now_str()
         })
-
-        lbl       = 'MALIGNANT' if result == 1 else 'BENIGN'
+        lbl = 'MALIGNANT' if result==1 else 'BENIGN'
         stage_str = f' — {stage}' if stage else ''
-        model_lbl = 'LR-WBCD' + (' + CNN' if cnn_used else '')
-
         col('lab_requests').update_one(
             {'_id': oid(request_id)},
-            {'$set': {'status': 'completed', 'updated_at': now_str()}})
+            {'$set': {'status':'completed','updated_at': now_str()}})
 
         notify_role('admin',
-            f"🏥 {req['patient_name']} [{req['patient_id']}] → {lbl}{stage_str} "
-            f"({confidence:.1f}% via {model_lbl})",
+            f"🏥 {req['patient_name']} [{req['patient_id']}] → {lbl}{stage_str} ({confidence:.1f}%)",
             url_for('all_predictions'))
 
-        flash(f"Determination saved: {lbl}{stage_str} ({confidence:.1f}% — {model_lbl})", 'success')
+        flash(f"Determination saved: {lbl}{stage_str} ({confidence:.1f}%)", 'success')
         return redirect(url_for('my_predictions'))
 
-    return _render_review()
+    return render_template('review_results.html', user=cu(),
+                           req=req, lab_result=lab,
+                           features=FEATURES, feat_values=feat_values,
+                           feature_defaults=FEATURE_DEFAULTS)
 
 # ── Predictions ───────────────────────────────────────────────────────────────
 @app.route('/predictions/mine')
