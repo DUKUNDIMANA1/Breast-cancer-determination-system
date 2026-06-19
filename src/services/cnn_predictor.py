@@ -140,17 +140,28 @@ def _he_stain_check(image_bytes):
                                (hsv[:,:,1] > 20) & (hsv[:,:,1] < 170) &
                                (hsv[:,:,2] > 80)))
 
+        # ── Dominant channel check (blue/cyan dominant = water/sky) ──────────
+        mean_r = float(r.mean())
+        mean_g = float(g.mean())
+        mean_b = float(b.mean())
+        # Blue-dominant: overall image is more blue/cyan than pink/purple
+        blue_dominant = (mean_b > mean_r * 1.15) and (mean_b > 100)
+        # Also check: if blue channel mean is high and cyan fraction is significant
+        pool_like = blue_dominant and cyan > 0.08
+
         detail = (f"pink={pink:.0%}, purple={purple:.0%}, cyan={cyan:.0%}, "
                   f"texture={lap:.0f}, white={white:.0%}, red={red_obj:.0%}, "
-                  f"green={green_obj:.0%}, skin={skin:.0%}")
+                  f"green={green_obj:.0%}, skin={skin:.0%}, "
+                  f"blue_dom={blue_dominant}(R={mean_r:.0f},G={mean_g:.0f},B={mean_b:.0f})")
 
         # All conditions must pass
         passes = (
-            (pink > 0.08 or purple > 0.15) and  # must have eosin OR strong purple (malignant has dense nuclei)
-            purple     > 0.05 and   # must have haematoxylin nuclei
-            cyan       < 0.15 and   # reject water/sky
+            (pink > 0.08 or purple > 0.15) and  # eosin OR dense nuclei
+            purple     > 0.05 and   # haematoxylin nuclei required
+            cyan       < 0.12 and   # reject water/sky (tightened from 0.15)
+            not pool_like     and   # reject pool/water photos
             white      < 0.35 and   # reject documents
-            lap        > 200  and   # must have cellular texture
+            lap        > 200  and   # cellular texture required
             red_obj    < 0.10 and   # reject red objects
             green_obj  < 0.10 and   # reject plants/grass
             skin       < 0.50       # reject skin/face photos
