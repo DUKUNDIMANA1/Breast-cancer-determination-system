@@ -93,12 +93,14 @@ def _he_stain_check(image_bytes):
     Check for H&E (haematoxylin & eosin) staining — the hallmark of
     histopathology slides.  Returns (passes: bool, detail: str).
 
-    Real tissue slides have BOTH:
-      - Eosin pink  (high R, meaningful G+B, R > B)
-      - Haematoxylin purple/blue (B > G by ≥15%, moderate R, not cyan)
-    plus fine cellular texture (Laplacian variance > 80).
-
-    Natural photos, documents, water, skin fail at least one condition.
+    Criteria (ALL must be met):
+      1. Eosin pink  > 8%   — pink tissue regions
+      2. Haematoxylin purple > 5% — blue/purple nuclei
+      3. Cyan (water/sky) < 15%  — reject landscape/water photos
+      4. Texture (Laplacian) > 200 — fine cellular structure
+      5. White/overexposed < 35%  — reject documents/screenshots
+      6. Not a natural colour photo (skin, food, objects)
+         — dominated by neither pure red nor pure green
     """
     try:
         import cv2
@@ -107,26 +109,52 @@ def _he_stain_check(image_bytes):
         if img is None:
             return False, "Could not decode image"
 
+        # Work at original resolution for accuracy, then resize
+        if img.shape[0] > 200:
+            img = cv2.resize(img, (200, 200))
+
         rgb  = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(float)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         r, g, b = rgb[:,:,0], rgb[:,:,1], rgb[:,:,2]
 
-        # Eosin pink fraction
-        pink = float(np.mean((r > 155) & (g > 75) & (b > 95) & (r > g) & (r > b * 1.05)))
-        # Haematoxylin purple fraction (exclude cyan = water/sky)
-        purple = float(np.mean((b > 110) & (b > g * 1.15) & (r > 60) & (r < 210) & (g < 180)))
-        # Cyan fraction (water, pool, sky rejection)
-        cyan   = float(np.mean((b > 110) & (g > 100) & (r < 140)))
-        # Texture
+        # ── H&E colour features ───────────────────────────────────────────────
+        # Eosin pink: R dominant, moderate G and B
+        pink   = float(np.mean((r > 160) & (g > 80) & (b > 100) & (r > g) & (r > b * 1.1)))
+        # Haematoxylin purple: B > G, moderate R (exclude cyan = sky/water)
+        purple = float(np.mean((b > 120) & (b > g * 1.2) & (r > 50) & (r < 200) & (g < 170)))
+        # Cyan rejection (water, sky, pool)
+        cyan   = float(np.mean((b > 120) & (g > 110) & (r < 130)))
+        # Texture — cellular structure has high Laplacian variance
         lap    = float(cv2.Laplacian(gray, cv2.CV_64F).var())
-        # Over-bright / document fraction
+        # Over-bright/white (documents, screenshots)
         white  = float(np.mean((r > 220) & (g > 220) & (b > 220)))
+        # Pure red objects (red objects, tomatoes, red fabric)
+        red_obj = float(np.mean((r > 180) & (g < 80) & (b < 80)))
+        # Pure green (plants, grass, leaves)
+        green_obj = float(np.mean((g > 140) & (r < 100) & (b < 100)))
+        # Dark brown (wood, soil) — common in natural photos
+        brown  = float(np.mean((r > 80) & (r < 180) & (g > 40) & (g < 130) & (b < 80) & (r > g * 1.2)))
+        # Skin tone detection: reddish, medium brightness, low saturation variance
+        hsv    = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_BGR2HSV).astype(float)
+        skin   = float(np.mean((hsv[:,:,0] > 0) & (hsv[:,:,0] < 25) &
+                               (hsv[:,:,1] > 20) & (hsv[:,:,1] < 170) &
+                               (hsv[:,:,2] > 80)))
 
-        detail = (f"pink={pink:.0%}, purple={purple:.0%}, "
-                  f"cyan={cyan:.0%}, texture={lap:.0f}, white={white:.0%}")
+        detail = (f"pink={pink:.0%}, purple={purple:.0%}, cyan={cyan:.0%}, "
+                  f"texture={lap:.0f}, white={white:.0%}, red={red_obj:.0%}, "
+                  f"green={green_obj:.0%}, skin={skin:.0%}")
 
-        passes = (pink > 0.05 and purple > 0.03
-                  and cyan < 0.20 and white < 0.40 and lap > 80)
+        # All conditions must pass
+        passes = (
+            (pink > 0.08 or purple > 0.15) and  # must have eosin OR strong purple (malignant has dense nuclei)
+            purple     > 0.05 and   # must have haematoxylin nuclei
+            cyan       < 0.15 and   # reject water/sky
+            white      < 0.35 and   # reject documents
+            lap        > 200  and   # must have cellular texture
+            red_obj    < 0.10 and   # reject red objects
+            green_obj  < 0.10 and   # reject plants/grass
+            skin       < 0.50       # reject skin/face photos
+        )
         return passes, detail
     except Exception as e:
         return True, f"H&E check skipped ({e})"
@@ -214,16 +242,19 @@ def cnn_validate_image(image_bytes):
             }
 
         else:
-            # 3-class softmax (legacy)
+            # 3-class softmax
             p_ben, p_mal, p_unrel = float(probs[0]), float(probs[1]), float(probs[2])
             pred = int(np.argmax(probs))
             he_ok, he_detail = _he_stain_check(image_bytes)
 
-            if pred == 2 or not he_ok:
+            # Reject if CNN says unrelated OR H&E check fails OR unrelated is dominant secondary
+            unrel_dominant = p_unrel > 0.25  # unrelated gets >25% — suspicious
+            if pred == 2 or not he_ok or unrel_dominant:
                 return {
                     'is_valid':   False,
                     'confidence': round(max(p_ben, p_mal) * 100, 1),
-                    'reason': (f"Image rejected: CNN={['Benign','Malignant','Unrelated'][pred]} "
+                    'reason': (f"Image rejected: not a valid H&E histopathology slide. "
+                               f"CNN={['Benign','Malignant','Unrelated'][pred]} "
                                f"(B={p_ben:.0%}, M={p_mal:.0%}, U={p_unrel:.0%}). "
                                f"{he_detail}. Upload an H&E stained tissue slide."),
                     'cnn_used': True,
