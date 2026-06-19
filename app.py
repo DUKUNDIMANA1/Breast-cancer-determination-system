@@ -1178,6 +1178,7 @@ def lab_image_extract():
         return redirect(url_for('upload_results', request_id=rid))
     from src.services.image_processor_advanced import extract_features
     from src.services.cnn_predictor import cnn_validate_image
+    from src.services.ood_detector import check_ood
 
     try:
         image_bytes = f.read()
@@ -1197,6 +1198,14 @@ def lab_image_extract():
         # ── Extract Wisconsin features ────────────────────────────────────────
         features = extract_features(image_bytes)
         extracted = {k: float(features.get(k, FEATURE_DEFAULTS[k])) for k in FEATURES}
+
+        # Reject feature sets that are outside the expected breast tissue distribution
+        ood = check_ood(extracted)
+        if ood['is_ood']:
+            flash(f'❌ Image rejected: {ood["message"]}', 'danger')
+            flash('Please upload a valid breast tissue (FNA/H&E stained) image.', 'danger')
+            return redirect(url_for('upload_results', request_id=rid))
+
         session['img_features'] = extracted
         flash(
             f'✅ Image validated ({method}, confidence={val["confidence"]:.0f}%). '
@@ -1233,8 +1242,8 @@ def api_extract_features():
                     f'Please upload a valid breast tissue image.'
                 ),
                 'validation_failed': True,
-                'confidence': val['confidence'],
-                'cnn_used':   val['cnn_used'],
+                'confidence': float(val['confidence']),
+                'cnn_used':   bool(val['cnn_used']),
             }), 400
 
         # ── Extract Wisconsin features ────────────────────────────────────────
@@ -1248,23 +1257,45 @@ def api_extract_features():
                     v = float(FEATURE_DEFAULTS[k])
             except (TypeError, ValueError):
                 v = float(FEATURE_DEFAULTS[k])
-            extracted[k] = round(v, 6)
+            extracted[k] = float(round(v, 6))
 
         # ── OOD check on extracted features ──────────────────────────────────
         from src.services.ood_detector import check_ood
         ood = check_ood(extracted)
+        if ood['is_ood']:
+            return jsonify({
+                'error': (
+                    f'Image rejected: {ood["message"]} '
+                    'Please upload a valid breast tissue image.'
+                ),
+                'validation_failed': True,
+                'confidence': float(val['confidence']),
+                'cnn_used': bool(val['cnn_used']),
+                'ood_flagged': True,
+                'ood_distance': float(ood.get('distance') or 0),
+                'ood_threshold': float(ood.get('threshold') or 0),
+                'ood_out_of_range': [str(x) for x in ood.get('out_of_range', [])],
+                'ood_confidence': float(ood.get('confidence_pct') or 0),
+                'ood_message': str(ood.get('message')),
+            }), 400
+
+        # Convert all numpy types to native Python for JSON serialization
+        def _to_native(v):
+            if v is None: return None
+            try: return float(v)
+            except: return v
 
         return jsonify({
-            'features':        extracted,
-            'warning':         val['confidence'] < 60,
-            'confidence':      val['confidence'],
-            'cnn_used':        val['cnn_used'],
-            'ood_flagged':     ood['is_ood'],
-            'ood_distance':    ood.get('distance'),
-            'ood_threshold':   ood.get('threshold'),
-            'ood_out_of_range': ood.get('out_of_range', []),
-            'ood_confidence':  ood.get('confidence_pct'),
-            'ood_message':     ood['message'] if ood['is_ood'] else None,
+            'features':         {k: float(v) for k, v in extracted.items()},
+            'warning':          bool(val['confidence'] < 60),
+            'confidence':       float(val['confidence']),
+            'cnn_used':         bool(val['cnn_used']),
+            'ood_flagged':      bool(ood['is_ood']),
+            'ood_distance':     _to_native(ood.get('distance')),
+            'ood_threshold':    _to_native(ood.get('threshold')),
+            'ood_out_of_range': [str(x) for x in ood.get('out_of_range', [])],
+            'ood_confidence':   _to_native(ood.get('confidence_pct')),
+            'ood_message':      str(ood['message']) if ood['is_ood'] else None,
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1329,7 +1360,8 @@ def review_results(request_id):
                     with open(img_full, 'rb') as _f:
                         img_bytes = _f.read()
                     cp = cnn_predict_image(img_bytes)
-                    if cp.get('available') and not cp.get('unrelated') and cp['result'] is not None:
+                    if (cp.get('available') and not cp.get('unrelated') and
+                        cp['result'] is not None and cp.get('confidence', 0) >= 75):
                         cnn_result = cp['result']
                         cnn_conf   = cp['confidence']
                         cnn_used_for_pred = True

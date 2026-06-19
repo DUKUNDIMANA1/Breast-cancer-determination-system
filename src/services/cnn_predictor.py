@@ -1,18 +1,19 @@
 """
 CNN Predictor — BreastCare AI
 ==============================
-Uses the 2-class MobileNetV2 model trained on IDC histopathology patches.
+Uses the 3-class MobileNetV2 model trained on IDC histopathology patches.
 
 Classes:
   0 = Benign  (IDC-negative tissue)
   1 = Malignant (IDC-positive tissue)
+  2 = Unrelated (not a tissue slide)
 
-Validation rule:
-  - Only class 0 and 1 images are accepted
-  - Confidence must be above minimum threshold
+Validation:
+  Step 1 — Colour sanity (fast, rejects obvious non-tissue: pure green,
+            cyan water, blue sky, pure red, blank, black)
+  Step 2 — CNN 3-class check (must predict class 0 or 1 with >= 45% confidence)
 
-If TensorFlow is not installed, falls back to a lightweight
-heuristic (blank/black/solid colour rejection only).
+No H&E stain check — the CNN handles tissue vs non-tissue classification.
 """
 
 import os
@@ -24,10 +25,10 @@ CHECKPOINT_PATH = os.path.join(BASE_DIR, 'artifacts', 'cnn_best.keras')
 IMG_SIZE        = 50
 
 # Minimum CNN confidence to accept as tissue (class 0 or 1)
-TISSUE_MIN_CONF = 0.45   # 45% — low enough to accept most real tissue patches
+TISSUE_MIN_CONF = 0.45
 
-_cnn_model    = None
-_model_n_out  = 3   # default assume 3-class
+_cnn_model   = None
+_model_n_out = 3
 
 
 def load_cnn():
@@ -82,9 +83,9 @@ def _decode_image(image_bytes):
 
 def _colour_sanity(image_bytes):
     """
-    Fast colour sanity check — rejects obviously non-tissue images.
-    Only catches clear-cut cases: pure green, pure blue, dominant skin,
-    cyan water, pure red. Does NOT reject complex real-world images.
+    Fast colour sanity — rejects obviously non-tissue images.
+    Catches: pure green/grass, cyan water, blue sky, pure red, blank, black.
+    Does NOT use H&E stain check — the CNN handles that.
     Returns (passes: bool, reason: str)
     """
     try:
@@ -92,52 +93,62 @@ def _colour_sanity(image_bytes):
         nparr = np.frombuffer(image_bytes, np.uint8)
         img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
-            return False, "Could not decode image"
+            return False, "Could not decode image file"
 
         if img.shape[0] > 200:
             img = cv2.resize(img, (200, 200))
 
-        rgb  = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(float)
+        gray   = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        bright = float(img.mean())
+        std    = float(gray.std())
+
+        # Blank / black / solid colour
+        if bright > 245 and std < 5:
+            return False, "Image appears blank or empty"
+        if bright < 5:
+            return False, "Image is completely black"
+        if std < 3:
+            return False, "Image has no variation (solid colour)"
+
+        rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(float)
         r, g, b = rgb[:,:,0], rgb[:,:,1], rgb[:,:,2]
-        mean_r, mean_g, mean_b = float(r.mean()), float(g.mean()), float(b.mean())
+        mean_r = float(r.mean())
+        mean_g = float(g.mean())
+        mean_b = float(b.mean())
 
-        # Pure green (grass, plants): green dominant by large margin
-        if mean_g > mean_r * 1.3 and mean_g > mean_b * 1.2 and mean_g > 80:
-            return False, f"Rejected: green-dominant image (R={mean_r:.0f}, G={mean_g:.0f}, B={mean_b:.0f})"
+        # Pure green dominant (grass, plants, leaves)
+        if mean_g > mean_r * 1.35 and mean_g > mean_b * 1.25 and mean_g > 80:
+            return False, f"Green-dominant image (R={mean_r:.0f} G={mean_g:.0f} B={mean_b:.0f})"
 
-        # Cyan/blue water or sky: blue+green >> red
-        cyan_frac = float(np.mean((b > 120) & (g > 100) & (r < 130)))
-        if cyan_frac > 0.20:
-            return False, f"Rejected: cyan/water image (cyan fraction={cyan_frac:.0%})"
+        # Cyan water / pool / sky (blue+green >> red)
+        cyan = float(np.mean((b > 120) & (g > 100) & (r < 130)))
+        if cyan > 0.20:
+            return False, f"Cyan/water image (cyan={cyan:.0%})"
 
-        # Blue dominant (sky, water)
-        if mean_b > mean_r * 1.3 and mean_b > mean_g * 1.1 and mean_b > 80:
-            return False, f"Rejected: blue-dominant image (R={mean_r:.0f}, G={mean_g:.0f}, B={mean_b:.0f})"
+        # Blue dominant (sky, sea)
+        if mean_b > mean_r * 1.35 and mean_b > mean_g * 1.1 and mean_b > 80:
+            return False, f"Blue-dominant image (R={mean_r:.0f} G={mean_g:.0f} B={mean_b:.0f})"
 
         # Pure red objects
-        red_frac = float(np.mean((r > 180) & (g < 80) & (b < 80)))
-        if red_frac > 0.15:
-            return False, f"Rejected: red-dominant image (red fraction={red_frac:.0%})"
-
-        # Skin-dominant (uniform orange-pink, low variation — face/body closeup)
-        hsv   = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_BGR2HSV).astype(float)
-        skin  = float(np.mean((hsv[:,:,0] >= 0) & (hsv[:,:,0] <= 20) &
-                               (hsv[:,:,1] >= 30) & (hsv[:,:,1] <= 200) &
-                               (hsv[:,:,2] >= 80)))
-        gray  = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_BGR2GRAY)
-        lap   = float(cv2.Laplacian(gray, cv2.CV_64F).var())
-        # Skin photo: high skin fraction AND low texture (smooth skin)
-        if skin > 0.55 and lap < 500:
-            return False, f"Rejected: skin-tone dominant image (skin={skin:.0%}, texture={lap:.0f})"
+        red = float(np.mean((r > 180) & (g < 80) & (b < 80)))
+        if red > 0.15:
+            return False, f"Red-dominant image (red={red:.0%})"
 
         return True, "Colour sanity passed"
+
     except Exception as e:
         return True, f"Colour check skipped ({e})"
 
 
+def _heuristic_validate(image_bytes):
+    """Fallback when CNN unavailable."""
+    ok, reason = _colour_sanity(image_bytes)
+    return ok, 50.0 if ok else 0.0, reason if not ok else "Accepted (CNN unavailable — basic check passed)."
+
+
 def cnn_validate_image(image_bytes):
     """
-    Validate whether an image is a tissue slide using the CNN only.
+    Validate whether an image is a tissue slide.
 
     Returns dict:
       is_valid    : bool
@@ -145,70 +156,87 @@ def cnn_validate_image(image_bytes):
       reason      : str
       cnn_used    : bool
     """
-    model = load_cnn()
+    # Step 1: fast colour sanity (no model needed)
+    col_ok, col_reason = _colour_sanity(image_bytes)
+    if not col_ok:
+        return {
+            'is_valid':   False,
+            'confidence': 0.0,
+            'reason':     f"Image rejected: {col_reason}. Upload an H&E stained tissue slide.",
+            'cnn_used':   False,
+        }
 
+    # Step 2: CNN classification
+    model = load_cnn()
     if model is None:
-        valid, conf, reason = _heuristic_validate(image_bytes)
-        return {'is_valid': valid, 'confidence': conf, 'reason': reason, 'cnn_used': False}
+        return {
+            'is_valid':   True,
+            'confidence': 50.0,
+            'reason':     "Accepted (CNN unavailable — colour check passed).",
+            'cnn_used':   False,
+        }
 
     try:
         arr   = _decode_image(image_bytes)
         probs = model.predict(arr, verbose=0)[0]
 
         if _model_n_out == 3:
-            # 3-class: 0=Benign, 1=Malignant, 2=Unrelated
-            p_ben, p_mal, p_unrel = float(probs[0]), float(probs[1]), float(probs[2])
-            pred = int(np.argmax(probs))
+            p_ben  = float(probs[0])
+            p_mal  = float(probs[1])
+            p_unrel = float(probs[2])
+            pred   = int(np.argmax(probs))
             tissue_conf = max(p_ben, p_mal)
 
-            # Reject all object images (class 2) and low-confidence tissue images
-            if pred == 2 or tissue_conf < TISSUE_MIN_CONF:
+            if pred == 2:
                 return {
                     'is_valid':   False,
-                    'confidence': round(max(p_unrel, tissue_conf) * 100, 1),
-                    'reason':     (f"Image rejected: Not a valid tissue image "
-                                   f"(Unrelated={p_unrel:.0%}, Tissue confidence={tissue_conf:.0%}). "
-                                   f"Only clear tissue images are accepted for feature extraction."),
+                    'confidence': round(p_unrel * 100, 1),
+                    'reason':     (f"Image rejected: CNN says Unrelated ({p_unrel:.0%}). "
+                                   f"Only tissue slides are accepted."),
+                    'cnn_used':   True,
+                }
+            if tissue_conf < TISSUE_MIN_CONF:
+                return {
+                    'is_valid':   False,
+                    'confidence': round(tissue_conf * 100, 1),
+                    'reason':     (f"Image rejected: CNN not confident it is tissue "
+                                   f"(Benign={p_ben:.0%}, Malignant={p_mal:.0%}, "
+                                   f"Unrelated={p_unrel:.0%})."),
                     'cnn_used':   True,
                 }
             label = "Benign" if pred == 0 else "Malignant"
-            conf  = round(tissue_conf * 100, 1)
             return {
                 'is_valid':   True,
-                'confidence': conf,
-                'reason':     (f"Valid tissue image — CNN: {label} "
+                'confidence': round(tissue_conf * 100, 1),
+                'reason':     (f"Valid tissue slide — CNN: {label} "
                                f"(Benign={p_ben:.0%}, Malignant={p_mal:.0%})."),
                 'cnn_used':   True,
             }
-
         else:
-            # Binary sigmoid: 0=Benign, 1=Malignant
+            # Binary sigmoid
             p_mal = float(probs[0]) if probs.shape == (1,) else float(probs)
             p_ben = 1.0 - p_mal
-            # Reject uncertain images (likely objects or non-tissue)
             if 0.35 <= p_mal <= 0.65:
                 return {
                     'is_valid':   False,
                     'confidence': round(max(p_ben, p_mal) * 100, 1),
-                    'reason':     (f"Image rejected: CNN uncertain (p_mal={p_mal:.3f}). "
-                                   f"Does not look like breast tissue. "
-                                   f"Only clear tissue images are accepted for feature extraction."),
+                    'reason':     f"Image rejected: CNN uncertain (p={p_mal:.3f}).",
                     'cnn_used':   True,
                 }
             label = "Malignant" if p_mal >= 0.5 else "Benign"
             conf  = round(max(p_ben, p_mal) * 100, 1)
-            return {
-                'is_valid':   True,
-                'confidence': conf,
-                'reason':     f"Valid tissue — CNN: {label} ({conf:.0f}%).",
-                'cnn_used':   True,
-            }
+            return {'is_valid': True, 'confidence': conf,
+                    'reason': f"Valid tissue — CNN: {label} ({conf:.0f}%).",
+                    'cnn_used': True}
 
     except Exception as e:
         print(f"[CNN] validate error: {e}")
-        valid, conf, reason = _heuristic_validate(image_bytes)
-        return {'is_valid': valid, 'confidence': conf,
-                'reason': f"CNN error ({e}); fallback: {reason}", 'cnn_used': False}
+        return {
+            'is_valid':   True,
+            'confidence': 50.0,
+            'reason':     f"CNN error ({e}); colour check passed.",
+            'cnn_used':   False,
+        }
 
 
 def cnn_predict_image(image_bytes):
@@ -233,20 +261,21 @@ def cnn_predict_image(image_bytes):
         probs = model.predict(arr, verbose=0)[0]
 
         if _model_n_out == 3:
-            p_ben, p_mal, p_unrel = float(probs[0]), float(probs[1]), float(probs[2])
-            pred = int(np.argmax(probs))
-            # Only accept class 0 (Benign) and class 1 (Malignant)
-            # Reject all object images (class 2)
+            p_ben  = float(probs[0])
+            p_mal  = float(probs[1])
+            p_unrel = float(probs[2])
+            pred   = int(np.argmax(probs))
             if pred == 2:
                 return {'available': True, 'result': None, 'unrelated': True,
-                        'confidence': round(p_unrel*100,2),
-                        'p_benign': round(p_ben*100,2), 'p_malignant': round(p_mal*100,2),
-                        'message': 'Object image rejected - only tissue images are accepted for prediction'}
+                        'confidence': round(p_unrel * 100, 2),
+                        'p_benign': round(p_ben * 100, 2),
+                        'p_malignant': round(p_mal * 100, 2)}
             result = pred
             conf   = round(float(probs[result]) * 100, 2)
             return {'available': True, 'result': result, 'unrelated': False,
                     'confidence': conf,
-                    'p_benign': round(p_ben*100,2), 'p_malignant': round(p_mal*100,2)}
+                    'p_benign': round(p_ben * 100, 2),
+                    'p_malignant': round(p_mal * 100, 2)}
         else:
             p_mal = float(probs[0]) if probs.shape == (1,) else float(probs)
             p_ben = 1.0 - p_mal
@@ -254,7 +283,8 @@ def cnn_predict_image(image_bytes):
             conf   = round((p_mal if result == 1 else p_ben) * 100, 2)
             return {'available': True, 'result': result, 'unrelated': False,
                     'confidence': conf,
-                    'p_benign': round(p_ben*100,2), 'p_malignant': round(p_mal*100,2)}
+                    'p_benign': round(p_ben * 100, 2),
+                    'p_malignant': round(p_mal * 100, 2)}
 
     except Exception as e:
         print(f"[CNN] predict error: {e}")
