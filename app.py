@@ -1299,6 +1299,12 @@ def review_results(request_id):
                                    features=FEATURES, feat_values=feat_values,
                                    feature_defaults=FEATURE_DEFAULTS)
 
+        # ── OOD check — warn if features are outside WBCD distribution ───────
+        from src.services.ood_detector import check_ood
+        ood = check_ood(adj)
+        if ood['is_ood']:
+            flash(ood['message'], 'warning')
+
         result, confidence = run_prediction(adj)
         stage = determine_stage(adj) if result == 1 else None
 
@@ -1340,6 +1346,10 @@ def review_results(request_id):
             'cnn_result':        cnn_result,
             'cnn_confidence':    cnn_conf,
             'cnn_used':          cnn_used_for_pred,
+            'ood_flagged':       ood['is_ood'],
+            'ood_distance':      ood.get('distance'),
+            'ood_out_of_range':  ood.get('out_of_range', []),
+            'model_used':        'Logistic-Regression (WBCD)',
             'doctor_notes':      request.form.get('doctor_notes',''),
             'determined_by':     session['user_id'],
             'created_at':        now_str(),
