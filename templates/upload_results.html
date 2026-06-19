@@ -53,6 +53,18 @@
       <i class="fa-solid fa-check-circle"></i> <span id="extracted-msg"></span>
     </div>
 
+    <!-- ── OOD Warning Banner ──────────────────────────────────────── -->
+    <div class="alert alert-warning mb-12" id="ood-warning" style="display:none;">
+      <div style="display:flex;align-items:flex-start;gap:10px;">
+        <i class="fa-solid fa-triangle-exclamation" style="margin-top:2px;flex-shrink:0;font-size:16px;"></i>
+        <div>
+          <strong>Out-of-Distribution Warning</strong><br>
+          <span id="ood-details" class="fs-13"></span><br>
+          <span class="fs-12 text-dim">The extracted features are unusual compared to the WBCD training data. The prediction may be less reliable. Please review and correct the values manually if needed.</span>
+        </div>
+      </div>
+    </div>
+
     <!-- ── WBC Visual Summary Panel ───────────────────────────────── -->
     <div id="wbc-summary" style="display:none;">
       <div class="sec-label"><i class="fa-solid fa-chart-bar"></i> Wisconsin Breast Cancer (WBC) Measurements — Extracted from Image</div>
@@ -327,6 +339,26 @@ function extractFeatures() {
       } else {
         banner.className = 'alert alert-success mb-12';
         msg.textContent  = '✅ Valid histopathology image — ' + filled + ' Wisconsin Breast Cancer features extracted successfully. Review measurements below.';
+      }
+
+      // OOD Warning — show below the success banner if features are out-of-distribution
+      const oodWrap = document.getElementById('ood-warning');
+      if (data.ood_flagged && oodWrap) {
+        oodWrap.style.display = '';
+        const oodDetails = document.getElementById('ood-details');
+        if (oodDetails) {
+          let txt = data.ood_message || 'Features may be outside the normal range.';
+          if (data.ood_out_of_range && data.ood_out_of_range.length > 0) {
+            txt += ' Out-of-range: ' + data.ood_out_of_range.slice(0,5).join(', ');
+            if (data.ood_out_of_range.length > 5) txt += '...';
+          }
+          if (data.ood_distance) {
+            txt += ' (distance=' + data.ood_distance.toFixed(1) + ', threshold=' + data.ood_threshold.toFixed(1) + ')';
+          }
+          oodDetails.textContent = txt;
+        }
+      } else if (oodWrap) {
+        oodWrap.style.display = 'none';
       }
 
       status.innerHTML = '';

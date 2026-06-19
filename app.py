@@ -1250,11 +1250,21 @@ def api_extract_features():
                 v = float(FEATURE_DEFAULTS[k])
             extracted[k] = round(v, 6)
 
+        # ── OOD check on extracted features ──────────────────────────────────
+        from src.services.ood_detector import check_ood
+        ood = check_ood(extracted)
+
         return jsonify({
-            'features':   extracted,
-            'warning':    val['confidence'] < 60,
-            'confidence': val['confidence'],
-            'cnn_used':   val['cnn_used'],
+            'features':        extracted,
+            'warning':         val['confidence'] < 60,
+            'confidence':      val['confidence'],
+            'cnn_used':        val['cnn_used'],
+            'ood_flagged':     ood['is_ood'],
+            'ood_distance':    ood.get('distance'),
+            'ood_threshold':   ood.get('threshold'),
+            'ood_out_of_range': ood.get('out_of_range', []),
+            'ood_confidence':  ood.get('confidence_pct'),
+            'ood_message':     ood['message'] if ood['is_ood'] else None,
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
