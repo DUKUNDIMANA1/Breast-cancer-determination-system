@@ -134,14 +134,38 @@ def _colour_sanity(image_bytes):
         if red > 0.15:
             return False, f"Red-dominant image (red={red:.0%})"
 
-        # Document/icon detection: very high white + some black lines + small colored area
-        # (PDF icons, diagrams, screenshots, logos)
+        # Document/icon detection: very high white + some black lines
         white = float(np.mean((r > 220) & (g > 220) & (b > 220)))
         black = float(np.mean((r < 40)  & (g < 40)  & (b < 40)))
         if white > 0.40 and black > 0.05:
             return False, f"Document/icon image (white={white:.0%}, black={black:.0%})"
-        if white > 0.55:
+        if white > 0.80:   # only reject nearly-all-white (was 0.55, too aggressive)
             return False, f"Document/screenshot (white={white:.0%})"
+
+        # Natural photo detection (animals, people, landscapes, food, objects)
+        # Natural photos have warm tones (yellow/orange/brown/skin) that H&E tissue doesn't
+        # Key insight: in tissue slides, warm tones (eosin pink) coexist with purple nuclei
+        # In natural photos, warm tones dominate WITHOUT the haematoxylin purple/blue nuclei
+        hsv = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_BGR2HSV).astype(float)
+        h_ch = hsv[:,:,0]
+        s_ch = hsv[:,:,1]
+        v_ch = hsv[:,:,2]
+
+        # Warm natural tones: hue 5-35 (yellow/orange/brown/skin/fur) with decent saturation
+        warm  = float(np.mean((h_ch >= 5)  & (h_ch <= 35) & (s_ch >= 25) & (v_ch >= 40)))
+        # Cool sky/grey tones: hue 90-130, low-mid saturation (clouds, sky, grey backgrounds)
+        cool  = float(np.mean((h_ch >= 90) & (h_ch <= 130) & (s_ch < 80) & (v_ch > 100)))
+        # Purple/haematoxylin: hue 120-160, meaningful saturation
+        purple = float(np.mean((h_ch >= 120) & (h_ch <= 160) & (s_ch >= 40) & (v_ch >= 40)))
+
+        # Natural photo: dominated by warm tones + optional cool sky, WITHOUT purple nuclei
+        # Dogs, grass, sand, skin, wood, food all have high warm fraction
+        if warm > 0.30 and purple < 0.05:
+            return False, f"Natural photo (warm={warm:.0%}, purple={purple:.0%}) — not a tissue slide"
+
+        # Mixed natural scene: warm + cool (landscape, outdoor photos)
+        if warm > 0.20 and cool > 0.15 and purple < 0.05:
+            return False, f"Natural outdoor scene (warm={warm:.0%}, cool={cool:.0%}, purple={purple:.0%})"
 
         return True, "Colour sanity passed"
 
