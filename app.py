@@ -1257,29 +1257,11 @@ def api_extract_features():
                 v = float(FEATURE_DEFAULTS[k])
             extracted[k] = float(round(v, 6))
 
-        # ── OOD check on extracted features (warn only, do not block upload) ─
-        from src.services.ood_detector import check_ood
-        ood = check_ood(extracted, for_image=True)
-
-        # Convert all numpy types to native Python for JSON serialization
-        def _to_native(v):
-            if v is None: return None
-            try: return float(v)
-            except: return v
-
-        ood_advisory = bool(ood.get('ood_advisory'))
         return jsonify({
-            'extract_policy':   'warn_only_v2',
-            'features':         {k: float(v) for k, v in extracted.items()},
-            'warning':          bool(val['confidence'] < 60 or ood_advisory),
-            'confidence':       float(val['confidence']),
-            'cnn_used':         bool(val['cnn_used']),
-            'ood_flagged':      ood_advisory,
-            'ood_distance':     _to_native(ood.get('distance')),
-            'ood_threshold':    _to_native(ood.get('threshold')),
-            'ood_out_of_range': [str(x) for x in ood.get('out_of_range', [])],
-            'ood_confidence':   _to_native(ood.get('confidence_pct')),
-            'ood_message':      str(ood['message']) if ood_advisory else None,
+            'features':   {k: float(v) for k, v in extracted.items()},
+            'warning':    bool(val['confidence'] < 60),
+            'confidence': float(val['confidence']),
+            'cnn_used':   bool(val['cnn_used']),
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
