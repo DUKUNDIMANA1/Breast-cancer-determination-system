@@ -99,12 +99,14 @@
       <div class="form-group">
         <label class="form-label">Full Name <span class="text-danger">*</span></label>
         <input class="form-control" type="text" name="full_name" id="full_name"
-               placeholder="Enter full name" required>
+               placeholder="Enter full name" required
+               value="{{ edit_user.full_name if edit_user else '' }}">
       </div>
       <div class="form-group">
         <label class="form-label">Username <span class="text-danger">*</span></label>
         <input class="form-control" type="text" name="username" id="username"
-               placeholder="Choose username" required>
+               placeholder="Choose username" required
+               value="{{ edit_user.username if edit_user else '' }}">
       </div>
     </div>
 
@@ -112,12 +114,14 @@
       <div class="form-group">
         <label class="form-label">Email <span class="text-danger">*</span></label>
         <input class="form-control" type="email" name="email" id="email"
-               placeholder="user@example.com" required>
+               placeholder="user@example.com" required
+               value="{{ edit_user.email if edit_user else '' }}">
       </div>
       <div class="form-group">
         <label class="form-label">Contact / Phone</label>
         <input class="form-control" type="tel" name="contact" id="contact_field"
-               data-phone-input placeholder="7XXXXXXXX">
+               data-phone-input placeholder="7XXXXXXXX"
+               value="{{ edit_user.contact if edit_user else '' }}">
       </div>
     </div>
 
@@ -126,30 +130,20 @@
         <label class="form-label">Role <span class="text-danger">*</span></label>
         <select class="form-control" name="role" id="role" required onchange="toggleSpecialization()">
           <option value="">— Select Role —</option>
-          <option value="admin">Administrator</option>
-          <option value="receptionist">Receptionist</option>
-          <option value="doctor">Doctor</option>
-          <option value="lab">Lab Technician</option>
-          <option value="data_manager">Data Manager</option>
+          <option value="admin"        {% if edit_user and edit_user.role=='admin' %}selected{% endif %}>Administrator</option>
+          <option value="receptionist" {% if edit_user and edit_user.role=='receptionist' %}selected{% endif %}>Receptionist</option>
+          <option value="doctor"       {% if edit_user and edit_user.role=='doctor' %}selected{% endif %}>Doctor</option>
+          <option value="lab"          {% if edit_user and edit_user.role=='lab' %}selected{% endif %}>Lab Technician</option>
+          <option value="data_manager" {% if edit_user and edit_user.role=='data_manager' %}selected{% endif %}>Data Manager</option>
         </select>
       </div>
       <div class="form-group" id="specialization-group" style="display:none;">
         <label class="form-label">Specialization <span class="text-danger">*</span></label>
         <select class="form-control" name="specialization" id="specialization">
           <option value="">— Select Specialization —</option>
-          <option value="Medical Oncologist">Medical Oncologist</option>
-          <option value="Surgical Oncologist">Surgical Oncologist</option>
-          <option value="Hematologist / Oncologist">Hematologist / Oncologist</option>
-          <option value="Gynecologic Oncologist">Gynecologic Oncologist</option>
-          <option value="Neuro-Oncologist">Neuro-Oncologist</option>
-          <option value="Pediatric Oncologist">Pediatric Oncologist</option>
-          <option value="Thoracic Oncologist">Thoracic Oncologist</option>
-          <option value="Urologic Oncologist">Urologic Oncologist</option>
-          <option value="Geriatric Oncologist">Geriatric Oncologist</option>
-          <option value="Pathologist">Pathologist</option>
-          <option value="Radiologist">Radiologist</option>
-          <option value="Palliative Care Specialist">Palliative Care Specialist</option>
-          <option value="Interventional Oncologist">Interventional Oncologist</option>
+          {% for spec in ['Medical Oncologist','Surgical Oncologist','Hematologist / Oncologist','Gynecologic Oncologist','Neuro-Oncologist','Pediatric Oncologist','Thoracic Oncologist','Urologic Oncologist','Geriatric Oncologist','Pathologist','Radiologist','Palliative Care Specialist','Interventional Oncologist'] %}
+          <option value="{{ spec }}" {% if edit_user and edit_user.specialization==spec %}selected{% endif %}>{{ spec }}</option>
+          {% endfor %}
         </select>
       </div>
     </div>
@@ -220,31 +214,23 @@ function editUser(userId) {
 
   const card = document.getElementById('user-form-card');
   card.style.display = 'block';
-  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  // Pre-fill form from server
-  fetch(editUrl)
-    .then(r => r.text())
-    .then(html => {
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      ['full_name','username','email'].forEach(f => {
-        const src = doc.querySelector(`[name="${f}"]`);
-        const dst = document.getElementById(f);
-        if (src && dst) dst.value = src.value || '';
-      });
-      // Role
-      const srcRole = doc.querySelector('[name="role"]');
-      const dstRole = document.getElementById('role');
-      if (srcRole && dstRole) {
-        dstRole.value = srcRole.value || '';
-        toggleSpecialization();
-      }
-      // Specialization
-      const srcSpec = doc.querySelector('[name="specialization"]');
-      const dstSpec = document.getElementById('specialization');
-      if (srcSpec && dstSpec) dstSpec.value = srcSpec.value || '';
+  // Fetch user data via JSON API
+  fetch(`/admin/users/${userId}/json`)
+    .then(r => r.json())
+    .then(u => {
+      document.getElementById('full_name').value    = u.full_name    || '';
+      document.getElementById('username').value     = u.username     || '';
+      document.getElementById('email').value        = u.email        || '';
+      document.getElementById('contact_field').value = u.contact     || '';
+      document.getElementById('role').value         = u.role         || '';
+      toggleSpecialization();
+      const spec = document.getElementById('specialization');
+      if (spec) spec.value = u.specialization || '';
     })
     .catch(() => {});
+
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function deleteUser(userId, name) {

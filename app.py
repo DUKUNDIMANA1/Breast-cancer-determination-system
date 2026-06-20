@@ -1526,6 +1526,23 @@ def create_user():
     
     return render_template('admin_users.html', user=cu())
 
+@app.route('/admin/users/<uid>/json')
+@role_required('admin')
+def get_user_json(uid):
+    u = col('users').find_one({'_id': oid(uid)})
+    if not u:
+        return jsonify({'error': 'Not found'}), 404
+    u = doc(u)
+    return jsonify({
+        'id':             u.get('id',''),
+        'full_name':      u.get('full_name',''),
+        'username':       u.get('username',''),
+        'email':          u.get('email',''),
+        'contact':        u.get('contact',''),
+        'role':           u.get('role',''),
+        'specialization': u.get('specialization',''),
+    })
+
 @app.route('/admin/users/<uid>/edit', methods=['GET','POST'])
 @role_required('admin')
 def edit_user(uid):
