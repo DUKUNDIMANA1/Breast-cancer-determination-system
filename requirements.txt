@@ -12,4 +12,3 @@ phonenumbers>=8.13.0
 gunicorn>=21.2.0
 scipy>=1.11.0
 scikit-image>=0.21.0
-tensorflow-cpu==2.15.1
