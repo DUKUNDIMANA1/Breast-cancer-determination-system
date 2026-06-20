@@ -134,6 +134,15 @@ def _colour_sanity(image_bytes):
         if red > 0.15:
             return False, f"Red-dominant image (red={red:.0%})"
 
+        # Document/icon detection: very high white + some black lines + small colored area
+        # (PDF icons, diagrams, screenshots, logos)
+        white = float(np.mean((r > 220) & (g > 220) & (b > 220)))
+        black = float(np.mean((r < 40)  & (g < 40)  & (b < 40)))
+        if white > 0.40 and black > 0.05:
+            return False, f"Document/icon image (white={white:.0%}, black={black:.0%})"
+        if white > 0.55:
+            return False, f"Document/screenshot (white={white:.0%})"
+
         return True, "Colour sanity passed"
 
     except Exception as e:
