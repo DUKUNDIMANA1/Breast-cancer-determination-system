@@ -135,14 +135,27 @@ templates/*_fixed.html
 
 # Large image datasets — too big for git
 data/merged_dataset/
+data/idc_extracted/
+data/idc_binary/
 data/8863/
 data/8864/
 data/8865/
 data/8867/
 data/8913/
 data/breast_histopathology/
+data/archive.zip
 
-# Temp / test scripts
+# Patient folders (numeric IDs)
+data/1*/
+data/2*/
+
+# Large model artifacts — use git-lfs or store separately
+artifacts/cnn_model.h5
+artifacts/cnn_best.keras
+artifacts/cnn_best_model.keras
+artifacts/model.pkl
+artifacts/scaler.pkl
+artifacts/ood_detector.pkl
 check_uploads.py
 check_image_types.py
 test_*.py

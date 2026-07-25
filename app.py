@@ -1,7 +1,7 @@
-﻿"""
+"""
 BreastCare AI — MongoDB Atlas Edition
 Roles: Receptionist → Doctor → Lab Technician → Doctor → Admin
-Model: Logistic Regression | Accuracy: 97.37%
+Primary Model: CNN (MobileNetV2, IDC histopathology) — only model used for diagnosis
 Database: MongoDB Atlas Cloud
 """
 
@@ -10,7 +10,7 @@ from flask import (Flask, render_template, request, redirect,
 from pymongo import MongoClient, DESCENDING
 from bson import ObjectId
 from bson.errors import InvalidId
-import hashlib, secrets, os, pickle, json
+import hashlib, secrets, os, json
 from datetime import datetime, timedelta
 from functools import wraps
 from dotenv import load_dotenv
@@ -18,10 +18,7 @@ import re
 import phonenumbers
 
 # ── Absolute paths ────────────────────────────────────────────────────────────
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH  = os.path.join(BASE_DIR, 'artifacts', 'model.pkl')
-SCALER_PATH = os.path.join(BASE_DIR, 'artifacts', 'scaler.pkl')
-CSV_PATH    = os.path.join(BASE_DIR, 'data', 'breast-cancer.csv')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Load environment variables from a single source of truth.
 load_dotenv(os.path.join(BASE_DIR, '.env'), override=False)
@@ -201,42 +198,6 @@ FEATURE_DEFAULTS = {
     'concave points_worst':0.1146,'symmetry_worst':0.2901,'fractal_dimension_worst':0.0839
 }
 
-# ── ML Model loader with auto-retrain on version mismatch ─────────────────────
-def _load_model():
-    def _train_fresh():
-        import pandas as pd
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.model_selection import train_test_split
-        from sklearn.preprocessing import StandardScaler
-        print("[BreastCare AI] Retraining model on breast-cancer.csv (30 features)...")
-        df  = pd.read_csv(CSV_PATH)
-        # Map M→1 (Malignant), B→0 (Benign)
-        df['diagnosis'] = df['diagnosis'].map({'M': 1, 'B': 0})
-        X   = df[FEATURES]; y = df['diagnosis']
-        Xtr,Xte,ytr,yte = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-        sc  = StandardScaler()
-        Xtr = sc.fit_transform(Xtr)
-        lr  = LogisticRegression(max_iter=1000, random_state=42)
-        lr.fit(Xtr, ytr)
-        with open(MODEL_PATH,  'wb') as f: pickle.dump(lr, f)
-        with open(SCALER_PATH, 'wb') as f: pickle.dump(sc, f)
-        from sklearn.metrics import accuracy_score
-        acc = accuracy_score(yte, lr.predict(sc.transform(Xte)))
-        print(f"[BreastCare AI] Retrained. Accuracy: {acc*100:.2f}%")
-        return lr, sc
-    try:
-        with open(MODEL_PATH,  'rb') as f: mdl = pickle.load(f)
-        with open(SCALER_PATH, 'rb') as f: sc  = pickle.load(f)
-        import pandas as pd
-        _X = sc.transform(pd.DataFrame([FEATURE_DEFAULTS], columns=FEATURES))
-        mdl.predict_proba(_X)
-        return mdl, sc
-    except Exception as e:
-        print(f"[BreastCare AI] Model issue ({e}). Retraining...")
-        return _train_fresh()
-
-model, scaler = _load_model()
-
 # ── Pre-load CNN at startup (background thread, non-blocking) ─────────────────
 def _preload_cnn():
     try:
@@ -308,32 +269,6 @@ def doc(mongo_doc):
 
 def docs(cursor):
     return [doc(d) for d in cursor]
-
-def run_prediction(feat_dict):
-    import pandas as pd
-    X = scaler.transform(pd.DataFrame([feat_dict], columns=FEATURES))
-    r = int(model.predict(X)[0])
-    c = float(max(model.predict_proba(X)[0])) * 100
-    return r, c
-
-def determine_stage(feat_dict):
-    """Estimate breast cancer stage (I–IV) for MALIGNANT predictions."""
-    radius      = feat_dict.get('radius_mean', 0)
-    concavity   = feat_dict.get('concavity_mean', 0)
-    comp_worst  = feat_dict.get('compactness_worst', 0)
-    conc_worst  = feat_dict.get('concavity_worst', 0)
-
-    size_score  = 0 if radius < 12 else (1 if radius < 16 else 2)
-    shape_score = 0 if concavity < 0.05 else (1 if concavity < 0.15 else 2)
-    aggr_score  = 0 if comp_worst < 0.15 else (1 if comp_worst < 0.35 else 2)
-    worst_score = 0 if conc_worst < 0.15 else (1 if conc_worst < 0.35 else 2)
-
-    total = size_score + shape_score + aggr_score + worst_score
-
-    if total <= 1:   return 'Stage I'
-    elif total <= 3: return 'Stage II'
-    elif total <= 5: return 'Stage III'
-    else:            return 'Stage IV'
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 def notify(user_id, message, link=None):
@@ -1111,6 +1046,18 @@ def upload_results(request_id):
         img_path = None; img_ann = None
         cnn_validation_meta = {}
         img_file = request.files.get('image')
+
+        # ── CNN is the primary model: an image is required ────────────────────
+        if not img_file or not img_file.filename:
+            flash('❌ A tissue slide image is required. '
+                  'The CNN is the primary diagnosis model and needs an image to run.',
+                  'danger')
+            return render_template('upload_results.html', user=cu(),
+                                   req=req, features=FEATURES,
+                                   feat_values=feats,
+                                   feature_defaults=FEATURE_DEFAULTS,
+                                   img_loaded=False)
+
         if img_file and img_file.filename:
             from src.services.image_processor_advanced import generate_annotated_image
             from src.services.cnn_predictor import cnn_validate_image
@@ -1178,7 +1125,6 @@ def lab_image_extract():
         return redirect(url_for('upload_results', request_id=rid))
     from src.services.image_processor_advanced import extract_features
     from src.services.cnn_predictor import cnn_validate_image
-    from src.services.ood_detector import check_ood
 
     try:
         image_bytes = f.read()
@@ -1198,11 +1144,6 @@ def lab_image_extract():
         # ── Extract Wisconsin features ────────────────────────────────────────
         features = extract_features(image_bytes)
         extracted = {k: float(features.get(k, FEATURE_DEFAULTS[k])) for k in FEATURES}
-
-        # OOD check — warn only; image features often differ from tabular WBCD scale
-        ood = check_ood(extracted, for_image=True)
-        if ood.get('ood_advisory'):
-            flash(ood['message'], 'warning')
 
         session['img_features'] = extracted
         flash(
@@ -1306,42 +1247,74 @@ def review_results(request_id):
                                    features=FEATURES, feat_values=feat_values,
                                    feature_defaults=FEATURE_DEFAULTS)
 
-        # ── OOD check — warn if features are outside WBCD distribution ───────
-        from src.services.ood_detector import check_ood
-        ood = check_ood(adj)
-        if ood['is_ood']:
-            flash(ood['message'], 'warning')
+        # Block prediction if no image was provided — CNN requires an image
+        if not lab.get('image_path'):
+            flash('⚠️ Cannot run prediction: no tissue image was uploaded with this lab result. '
+                  'The CNN model requires a valid breast tissue slide image. '
+                  'Please ask the lab technician to re-submit with an image.', 'danger')
+            return render_template('review_results.html', user=cu(),
+                                   req=req, lab_result=lab,
+                                   features=FEATURES, feat_values=feat_values,
+                                   feature_defaults=FEATURE_DEFAULTS)
 
-        result, confidence = run_prediction(adj)
-        stage = determine_stage(adj) if result == 1 else None
-
-        # ── CNN secondary prediction (from stored image if available) ─────────
+        # ── CNN is the only model ─────────────────────────────────────────────
         from src.services.cnn_predictor import cnn_predict_image, cnn_available
-        cnn_result = cnn_conf = None
-        cnn_used_for_pred = False
-        if cnn_available() and lab.get('image_path'):
-            try:
-                img_full = os.path.join(app.config['UPLOAD_FOLDER'], lab['image_path'])
-                if os.path.exists(img_full):
-                    with open(img_full, 'rb') as _f:
-                        img_bytes = _f.read()
-                    cp = cnn_predict_image(img_bytes)
-                    if (cp.get('available') and not cp.get('unrelated') and
-                        cp['result'] is not None and cp.get('confidence', 0) >= 75):
-                        cnn_result = cp['result']
-                        cnn_conf   = cp['confidence']
-                        cnn_used_for_pred = True
-                        if cnn_result != result:
-                            flash(
-                                f'⚠️ Note: CNN image model suggests '
-                                f'{"MALIGNANT" if cnn_result==1 else "BENIGN"} '
-                                f'({cnn_conf:.1f}%) while feature model says '
-                                f'{"MALIGNANT" if result==1 else "BENIGN"} '
-                                f'({confidence:.1f}%). Consider both results.',
-                                'warning'
-                            )
-            except Exception as _e:
-                print(f"[CNN pred] error: {_e}")
+
+        if not cnn_available():
+            flash('❌ CNN model is not available. Please ensure artifacts/cnn_model.h5 exists. '
+                  'Run ml/train_from_zip.py to train the model.', 'danger')
+            return render_template('review_results.html', user=cu(),
+                                   req=req, lab_result=lab,
+                                   features=FEATURES, feat_values=feat_values,
+                                   feature_defaults=FEATURE_DEFAULTS)
+
+        try:
+            img_full = os.path.join(app.config['UPLOAD_FOLDER'], lab['image_path'])
+            if not os.path.exists(img_full):
+                flash('❌ Image file not found on disk. Please ask the lab technician to re-upload.', 'danger')
+                return render_template('review_results.html', user=cu(),
+                                       req=req, lab_result=lab,
+                                       features=FEATURES, feat_values=feat_values,
+                                       feature_defaults=FEATURE_DEFAULTS)
+
+            with open(img_full, 'rb') as _f:
+                img_bytes = _f.read()
+            cp = cnn_predict_image(img_bytes)
+        except Exception as _e:
+            flash(f'❌ CNN prediction error: {_e}', 'danger')
+            return render_template('review_results.html', user=cu(),
+                                   req=req, lab_result=lab,
+                                   features=FEATURES, feat_values=feat_values,
+                                   feature_defaults=FEATURE_DEFAULTS)
+
+        if not cp.get('available') or cp.get('unrelated') or cp['result'] is None:
+            flash('❌ CNN could not classify this image — it may not be a valid tissue slide. '
+                  'Please ask the lab technician to re-upload a valid FNA/H&E image.', 'danger')
+            return render_template('review_results.html', user=cu(),
+                                   req=req, lab_result=lab,
+                                   features=FEATURES, feat_values=feat_values,
+                                   feature_defaults=FEATURE_DEFAULTS)
+
+        result     = cp['result']
+        confidence = cp['confidence']
+        uncertain  = cp.get('uncertain', False)
+        model_used = 'IDC-CNN (MobileNetV2)'
+
+        # Warn if prediction is low-confidence
+        if uncertain:
+            flash(f'⚠️ Low confidence prediction ({confidence:.1f}%). '
+                  f'The CNN is uncertain about this result (Benign={cp.get("p_benign", 0):.1f}%, '
+                  f'Malignant={cp.get("p_malignant", 0):.1f}%). '
+                  f'Please review the image and features carefully before finalizing.', 'warning')
+
+        # Stage estimation from CNN malignant probability
+        stage = None
+        if result == 1:
+            p = cp.get('p_malignant', 50) / 100.0
+            if p < 0.65:   stage = 'Stage I'
+            elif p < 0.80: stage = 'Stage II'
+            elif p < 0.92: stage = 'Stage III'
+            else:           stage = 'Stage IV'
 
         col('predictions').insert_one({
             'patient_id':        req['patient_id'],
@@ -1351,13 +1324,10 @@ def review_results(request_id):
             'result':            result,
             'confidence':        confidence,
             'stage':             stage,
-            'cnn_result':        cnn_result,
-            'cnn_confidence':    cnn_conf,
-            'cnn_used':          cnn_used_for_pred,
-            'ood_flagged':       ood['is_ood'],
-            'ood_distance':      ood.get('distance'),
-            'ood_out_of_range':  ood.get('out_of_range', []),
-            'model_used':        'Logistic-Regression (WBCD)',
+            'cnn_result':        result,
+            'cnn_confidence':    confidence,
+            'cnn_used':          True,
+            'model_used':        model_used,
             'doctor_notes':      request.form.get('doctor_notes',''),
             'determined_by':     session['user_id'],
             'created_at':        now_str(),

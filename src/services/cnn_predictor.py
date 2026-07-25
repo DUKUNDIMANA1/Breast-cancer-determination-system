@@ -21,7 +21,8 @@ import numpy as np
 
 BASE_DIR        = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MODEL_PATH      = os.path.join(BASE_DIR, 'artifacts', 'cnn_model.h5')
-CHECKPOINT_PATH = os.path.join(BASE_DIR, 'artifacts', 'cnn_best.keras')
+# NOTE: cnn_best.keras intentionally not used — Keras 3 cannot deserialise
+# MobileNetV2 checkpoints saved with legacy BatchNorm renorm config keys.
 IMG_SIZE        = 50
 
 # Minimum CNN confidence to accept as tissue (class 0 or 1)
@@ -46,7 +47,7 @@ def load_cnn():
         print(f"[CNN] TensorFlow import error: {e}")
         return None
 
-    for path in [MODEL_PATH, CHECKPOINT_PATH]:
+    for path in [MODEL_PATH]:
         if not os.path.exists(path):
             continue
         if os.path.getsize(path) < 1000:
@@ -276,6 +277,9 @@ def cnn_predict_image(image_bytes):
     """
     Predict Benign (0) or Malignant (1) from image bytes.
 
+    Uses elevated threshold for malignant (0.55 instead of 0.5) to reduce
+    false positives (benign classified as malignant).
+
     Returns dict:
       available   : bool
       result      : 0=Benign, 1=Malignant, None if unrelated/unavailable
@@ -283,11 +287,12 @@ def cnn_predict_image(image_bytes):
       p_benign    : float 0-100
       p_malignant : float 0-100
       unrelated   : bool
+      uncertain   : bool  — True if prediction is low-confidence (< 60%)
     """
     model = load_cnn()
     if model is None:
         return {'available': False, 'result': None, 'confidence': 0,
-                'p_benign': 0, 'p_malignant': 0, 'unrelated': False}
+                'p_benign': 0, 'p_malignant': 0, 'unrelated': False, 'uncertain': False}
 
     try:
         arr   = _decode_image(image_bytes)
@@ -302,32 +307,39 @@ def cnn_predict_image(image_bytes):
                 return {'available': True, 'result': None, 'unrelated': True,
                         'confidence': round(p_unrel * 100, 2),
                         'p_benign': round(p_ben * 100, 2),
-                        'p_malignant': round(p_mal * 100, 2)}
+                        'p_malignant': round(p_mal * 100, 2), 'uncertain': False}
             result = pred
             conf   = round(float(probs[result]) * 100, 2)
+            # Flag as uncertain if confidence is below 60%
+            uncertain = conf < 60.0
             return {'available': True, 'result': result, 'unrelated': False,
                     'confidence': conf,
                     'p_benign': round(p_ben * 100, 2),
-                    'p_malignant': round(p_mal * 100, 2)}
+                    'p_malignant': round(p_mal * 100, 2),
+                    'uncertain': uncertain}
         else:
+            # ELEVATED THRESHOLD: Require 55% confidence for malignant (instead of 50%)
+            # This reduces false positives where benign images are classified as malignant
             p_mal = float(probs[0]) if probs.shape == (1,) else float(probs)
             p_ben = 1.0 - p_mal
-            result = 1 if p_mal >= 0.5 else 0
+            result = 1 if p_mal >= 0.55 else 0  # Changed from 0.5 to 0.55
             conf   = round((p_mal if result == 1 else p_ben) * 100, 2)
+            uncertain = conf < 60.0
             return {'available': True, 'result': result, 'unrelated': False,
                     'confidence': conf,
                     'p_benign': round(p_ben * 100, 2),
-                    'p_malignant': round(p_mal * 100, 2)}
+                    'p_malignant': round(p_mal * 100, 2),
+                    'uncertain': uncertain}
 
     except Exception as e:
         print(f"[CNN] predict error: {e}")
         return {'available': False, 'result': None, 'confidence': 0,
-                'p_benign': 0, 'p_malignant': 0, 'unrelated': False, 'error': str(e)}
+                'p_benign': 0, 'p_malignant': 0, 'unrelated': False, 'uncertain': False, 'error': str(e)}
 
 
 def cnn_available():
     """True if a valid model file exists on disk."""
-    for path in [MODEL_PATH, CHECKPOINT_PATH]:
+    for path in [MODEL_PATH]:
         if os.path.exists(path) and os.path.getsize(path) > 1000:
             return True
     return False

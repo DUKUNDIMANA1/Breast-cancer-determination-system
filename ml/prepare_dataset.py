@@ -11,6 +11,7 @@ Sources used automatically (no external download needed):
 
   Source 1  Real patient image patches from data/<patient_id>/0/ and /1/
             Folders: 8863, 8864, 8865, 8867, 8913 (or any numeric folder)
+            OR extracted from data/archive.zip (555,000+ IDC patches)
 
   Source 2  Wisconsin Breast Cancer CSV (data/breast-cancer.csv)
             Each row rendered as a 50x50 colour heatmap image
@@ -29,6 +30,7 @@ Usage:
   python ml/prepare_dataset.py
   python ml/prepare_dataset.py --max 5000   # limit patches per class
   python ml/prepare_dataset.py --no-csv     # skip CSV heatmaps
+  python ml/prepare_dataset.py --zip        # force extraction from archive.zip
 """
 
 import os, sys, shutil, glob, argparse
@@ -37,6 +39,7 @@ import cv2
 
 BASE_DIR  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR  = os.path.join(BASE_DIR, 'data')
+ZIP_PATH  = os.path.join(DATA_DIR, 'archive.zip')
 CSV_PATH  = os.path.join(DATA_DIR, 'breast-cancer.csv')
 OUT_DIR   = os.path.join(DATA_DIR, 'merged_dataset')
 IMG_SIZE  = 50
@@ -63,21 +66,102 @@ def _find_patient_folders():
     return sorted(folders)
 
 
+def _extract_zip_patches(max_per_class):
+    """
+    Extract IDC patches directly from data/archive.zip into merged_dataset.
+    The zip layout mirrors the patient folder layout:
+      <patient_id>/0/<image>.png  → class 0 (benign)
+      <patient_id>/1/<image>.png  → class 1 (malignant)
+    Returns (benign_count, malignant_count).
+    """
+    import zipfile
+    import io
+
+    if not os.path.exists(ZIP_PATH):
+        print(f"  [WARN] archive.zip not found at {ZIP_PATH}")
+        return 0, 0
+
+    print(f"  Reading {ZIP_PATH} …")
+    benign_files    = []
+    malignant_files = []
+
+    with zipfile.ZipFile(ZIP_PATH, 'r') as zf:
+        all_names = zf.namelist()
+        for name in all_names:
+            if name.endswith('.png') or name.endswith('.jpg'):
+                parts = name.replace('\\', '/').split('/')
+                if len(parts) >= 3:
+                    cls_dir = parts[-2]  # the '0' or '1' subfolder
+                    if cls_dir == '0':
+                        benign_files.append(name)
+                    elif cls_dir == '1':
+                        malignant_files.append(name)
+
+    print(f"  Zip contains: {len(benign_files):,} benign, {len(malignant_files):,} malignant patches")
+
+    # Shuffle for variety before capping
+    rng = np.random.RandomState(42)
+    rng.shuffle(benign_files)
+    rng.shuffle(malignant_files)
+    benign_files    = benign_files[:max_per_class]
+    malignant_files = malignant_files[:max_per_class]
+
+    print(f"  Using: {len(benign_files):,} benign, {len(malignant_files):,} malignant  (max={max_per_class:,})")
+
+    with zipfile.ZipFile(ZIP_PATH, 'r') as zf:
+        for i, name in enumerate(benign_files):
+            try:
+                data = zf.read(name)
+                arr  = np.frombuffer(data, np.uint8)
+                img  = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                if img is not None:
+                    img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
+                    cv2.imwrite(os.path.join(OUT_DIR, '0', f'zip_b_{i:07d}.png'), img)
+            except Exception as e:
+                pass
+            if (i + 1) % 5000 == 0:
+                print(f"    Extracted {i+1:,}/{len(benign_files):,} benign patches…")
+
+        for i, name in enumerate(malignant_files):
+            try:
+                data = zf.read(name)
+                arr  = np.frombuffer(data, np.uint8)
+                img  = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                if img is not None:
+                    img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
+                    cv2.imwrite(os.path.join(OUT_DIR, '1', f'zip_m_{i:07d}.png'), img)
+            except Exception as e:
+                pass
+            if (i + 1) % 5000 == 0:
+                print(f"    Extracted {i+1:,}/{len(malignant_files):,} malignant patches…")
+
+    final_b = len(os.listdir(os.path.join(OUT_DIR, '0')))
+    final_m = len(os.listdir(os.path.join(OUT_DIR, '1')))
+    return final_b, final_m
+
+
 def _copy_patient_images(max_per_class):
     """
     Walk every data/<patient_id>/0/ and data/<patient_id>/1/ folder
     and copy PNGs into merged_dataset/0/ and merged_dataset/1/.
+    Falls back to archive.zip if no patient folders are found.
     """
+    patient_folders = _find_patient_folders()
+
+    if not patient_folders:
+        print("  No numeric patient folders found — using archive.zip instead.")
+        return _extract_zip_patches(max_per_class)
+
     benign_files    = []
     malignant_files = []
 
-    for folder in _find_patient_folders():
+    for folder in patient_folders:
         b = glob.glob(os.path.join(folder, '0', '*.png'))
         m = glob.glob(os.path.join(folder, '1', '*.png'))
         benign_files.extend(b)
         malignant_files.extend(m)
 
-    print(f"  Patient folders found : {len(_find_patient_folders())}")
+    print(f"  Patient folders found : {len(patient_folders)}")
     print(f"  Total patches found   : {len(benign_files):,} benign, "
           f"{len(malignant_files):,} malignant")
 
@@ -232,7 +316,7 @@ def _generate_unrelated_images(count):
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
-def prepare(max_per_class=10000, include_csv=True):
+def prepare(max_per_class=10000, include_csv=True, force_zip=False):
     # Create output dirs
     for cls in ['0', '1', '2']:
         os.makedirs(os.path.join(OUT_DIR, cls), exist_ok=True)
@@ -242,9 +326,13 @@ def prepare(max_per_class=10000, include_csv=True):
     print("=" * 62)
     print(f"Output: {OUT_DIR}\n")
 
-    # ── Source 1: Real patient image patches ─────────────────────
-    print("[1/3] Copying real patient image patches…")
-    patch_b, patch_m = _copy_patient_images(max_per_class)
+    # ── Source 1: Real patient image patches (or archive.zip) ────
+    if force_zip:
+        print("[1/3] Extracting patches from archive.zip (--zip flag set)…")
+        patch_b, patch_m = _extract_zip_patches(max_per_class)
+    else:
+        print("[1/3] Copying real patient image patches…")
+        patch_b, patch_m = _copy_patient_images(max_per_class)
 
     # ── Source 2: Wisconsin CSV heatmaps ─────────────────────────
     if include_csv:
@@ -289,5 +377,7 @@ if __name__ == '__main__':
                         help='Max real patches per class (default: 10000).')
     parser.add_argument('--no-csv', dest='csv', action='store_false', default=True,
                         help='Skip Wisconsin CSV heatmap generation.')
+    parser.add_argument('--zip', dest='zip', action='store_true', default=False,
+                        help='Force extraction from data/archive.zip (uses full 555K IDC dataset).')
     args = parser.parse_args()
-    prepare(max_per_class=args.max, include_csv=args.csv)
+    prepare(max_per_class=args.max, include_csv=args.csv, force_zip=args.zip)
