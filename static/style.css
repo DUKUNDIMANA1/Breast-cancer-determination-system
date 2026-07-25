@@ -6,9 +6,9 @@
 /* ===== DESIGN TOKENS ===== */
 :root {
   /* Page backgrounds */
-  --bg-primary:        #f1f5f9;
-  --bg-secondary:      #e8eef5;
-  --bg-tertiary:       #dce6f0;
+  --bg-primary:        #f8faff;
+  --bg-secondary:      #f0f4ff;
+  --bg-tertiary:       #e8eeff;
   --surface:           #ffffff;
   --surface-secondary: #f8fafc;
 
@@ -3176,6 +3176,7 @@ html[data-theme="light"] .iti__search-input {
   border-color: var(--border-primary);
   color: var(--text-primary);
 }
+
 
 
 
