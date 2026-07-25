@@ -1,58 +1,59 @@
 ﻿/**
  * BreastCare AI - Consistent Design System
- * Medical-grade styling for breast cancer prediction system
+ * Rwanda MoH-aligned color palette
  */
 
 /* ===== DESIGN TOKENS ===== */
 :root {
-  /* Page backgrounds */
-  --bg-primary:        #f8faff;
-  --bg-secondary:      #f0f4ff;
-  --bg-tertiary:       #e8eeff;
+  /* Page backgrounds — MoH white/light */
+  --bg-primary:        #f4f8f6;
+  --bg-secondary:      #eaf2ee;
+  --bg-tertiary:       #d9ece3;
   --surface:           #ffffff;
-  --surface-secondary: #f8fafc;
+  --surface-secondary: #f9fbfa;
 
-  /* Sidebar — deep navy */
-  --sidebar-bg:             #0f2044;
+  /* Sidebar — deep Rwanda health teal */
+  --sidebar-bg:             #005a46;
   --sidebar-border:         rgba(255,255,255,0.08);
-  --sidebar-text:           rgba(255,255,255,0.65);
+  --sidebar-text:           rgba(255,255,255,0.70);
   --sidebar-text-active:    #ffffff;
-  --sidebar-active-bg:      rgba(99,179,255,0.18);
-  --sidebar-active-border:  #63b3ff;
-  --sidebar-section:        rgba(255,255,255,0.35);
-  --sidebar-hover-bg:       rgba(255,255,255,0.07);
+  --sidebar-active-bg:      rgba(0,161,222,0.22);
+  --sidebar-active-border:  #00A1DE;
+  --sidebar-section:        rgba(255,255,255,0.38);
+  --sidebar-hover-bg:       rgba(255,255,255,0.08);
   --sidebar-footer-bg:      rgba(0,0,0,0.18);
 
-  /* Topbar */
+  /* Topbar — white, clean */
   --topbar-bg:     #ffffff;
-  --topbar-border: #e2e8f0;
+  --topbar-border: #d4e8df;
 
   /* Borders */
-  --border-primary:  #cbd5e1;
-  --border-secondary:#94a3b8;
-  --border-light:    rgba(148,163,184,0.3);
+  --border-primary:  #c2dbd2;
+  --border-secondary:#8fbfaf;
+  --border-light:    rgba(0,135,81,0.18);
 
-  /* Accent — electric blue */
-  --accent-primary:   #2563eb;
-  --accent-secondary: #1d4ed8;
-  --accent3:          #059669;
+  /* Accent — Rwanda health green + Rwanda blue */
+  --accent-primary:   #008751;   /* Rwanda health green — main CTA */
+  --accent-secondary: #006B40;   /* darker green — hover/active */
+  --accent3:          #00A1DE;   /* Rwanda blue — brand, links */
 
   /* Status */
-  --success: #059669;
-  --warning: #d97706;
-  --danger:  #dc2626;
-  --info:    #2563eb;
+  --success: #008751;
+  --warning: #E5BE01;
+  --danger:  #cc2936;
+  --info:    #00A1DE;
 
   /* Text */
-  --text-primary:   #0f172a;
-  --text-secondary: #334155;
-  --text-tertiary:  #64748b;
-  --text-muted:     #94a3b8;
+  --text-primary:   #0d1f17;
+  --text-secondary: #1e4033;
+  --text-tertiary:  #4a7a62;
+  --text-muted:     #7aaa90;
 
   /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.06);
-  --shadow-md: 0 4px 12px rgba(37,99,235,0.10), 0 2px 6px rgba(15,23,42,0.07);
-  --shadow-lg: 0 10px 30px rgba(37,99,235,0.12), 0 4px 12px rgba(15,23,42,0.08);
+  --shadow-sm: 0 1px 3px rgba(0,87,51,0.08), 0 1px 2px rgba(0,87,51,0.05);
+  --shadow-md: 0 4px 12px rgba(0,87,51,0.10), 0 2px 6px rgba(0,87,51,0.06);
+  --shadow-lg: 0 10px 30px rgba(0,87,51,0.12), 0 4px 12px rgba(0,87,51,0.07);
+
   /* Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
@@ -83,7 +84,6 @@
   --transition-base: 0.2s ease;
   --transition-slow: 0.3s ease;
 }
-
 /* ===== RESET & BASE ===== */
 * {
   margin: 0;
@@ -151,7 +151,7 @@ a:hover {
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 1px 0 var(--topbar-border), 0 2px 8px rgba(37,99,235,0.06);
+  box-shadow: 0 1px 0 var(--topbar-border), 0 2px 8px rgba(0,135,81,0.06);
 }
 
 .topbar-logo {
@@ -249,9 +249,9 @@ a:hover {
 }
 
 .role-doctor {
-  background: rgba(37,99,235,0.10);
-  color: #1d4ed8;
-  border-color: rgba(37,99,235,0.25);
+  background: rgba(0,135,81,0.10);
+  color: #006B40;
+  border-color: rgba(0,135,81,0.22);
 }
 
 .role-receptionist {
@@ -274,7 +274,7 @@ a:hover {
 
 /* Role pill variants for topbar */
 .rp-admin        { background: rgba(217,119,6,0.12);   color: #92400e;                border: 1px solid rgba(217,119,6,0.3); }
-.rp-doctor       { background: rgba(37,99,235,0.10);  color: #1d4ed8; border: 1px solid rgba(37,99,235,0.25); }
+.rp-doctor       { background: rgba(0,135,81,0.10);  color: #006B40; border: 1px solid rgba(0,135,81,0.22); }
 .rp-receptionist { background: rgba(13,158,106,0.10);  color: #065f46;                border: 1px solid rgba(13,158,106,0.25); }
 .rp-lab          { background: rgba(109,40,217,0.10);  color: #5b21b6;                border: 1px solid rgba(109,40,217,0.3); }
 .rp-data_manager { background: rgba(194,65,12,0.10);   color: #9a3412;                border: 1px solid rgba(194,65,12,0.25); }
@@ -485,7 +485,7 @@ a:hover {
 
 .form-control:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 0 0 3px rgba(0,135,81,0.15);
 }
 
 .form-control::placeholder {
@@ -549,12 +549,12 @@ select.form-control option {
 .btn-primary {
   background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
   color: white;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 2px 8px rgba(0,135,81,0.30);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.45);
+  box-shadow: 0 4px 16px rgba(0,135,81,0.40);
 }
 
 .btn-secondary {
@@ -564,7 +564,7 @@ select.form-control option {
 }
 
 .btn-secondary:hover {
-  border-color: #1d4ed8;
+  border-color: #006B40;
   color: var(--text-primary);
 }
 
@@ -689,7 +689,7 @@ select.form-control option {
 }
 
 .table-wrap table tbody tr:hover td {
-  background: rgba(37,99,235,0.06);
+  background: rgba(0,135,81,0.06);
 }
 
 .table-wrap table tbody tr:last-child td {
@@ -722,7 +722,7 @@ select.form-control option {
 }
 
 .table tbody tr:hover td {
-  background: rgba(37,99,235,0.06);
+  background: rgba(0,135,81,0.06);
 }
 
 .table tbody tr:last-child td {
@@ -1885,7 +1885,7 @@ select.form-control option {
   border: 1px solid var(--border-light);
 }
 .notif-unread {
-  background: rgba(37,99,235,0.07);
+  background: rgba(0,135,81,0.07);
   border-color: rgba(26, 111, 190, 0.2);
 }
 
@@ -1988,8 +1988,8 @@ select.form-control option {
   outline: none !important;
 }
 .iti__tel-input:focus {
-  border-color: #1d4ed8 !important;
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.15) !important;
+  border-color: #006B40 !important;
+  box-shadow: 0 0 0 3px rgba(0,135,81,0.15) !important;
 }
 .iti__tel-input::placeholder { color: var(--text-tertiary) !important; }
 .iti__flag-container {
@@ -2113,7 +2113,7 @@ select.form-control option {
 
 .feat-g input[type="number"]:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+  box-shadow: 0 0 0 3px rgba(0,135,81,0.15);
 }
 
 /* ===== INFO GRID STYLING ===== */
@@ -2172,7 +2172,7 @@ select.form-control option {
 
 .fc:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+  box-shadow: 0 0 0 3px rgba(0,135,81,0.15);
 }
 
 /* ===== IMAGE COMPARISON STYLING ===== */
@@ -2232,55 +2232,55 @@ select.form-control option {
 
 /* ===== DARK THEME ===== */
 [data-theme="dark"] {
-  --bg-primary:   #020d1a;
-  --bg-secondary: #041426;
-  --bg-tertiary:  #071e35;
-  --surface:      #0d2847;
-  --surface-secondary: #102f55;
+  --bg-primary:   #071410;
+  --bg-secondary: #0d1f18;
+  --bg-tertiary:  #122b21;
+  --surface:      #193828;
+  --surface-secondary: #1e4430;
 
-  --topbar-bg:     #041426;
-  --topbar-border: #1a4a7a;
+  --topbar-bg:     #0d1f18;
+  --topbar-border: #1e4430;
 
-  --sidebar-bg:            #020d1a;
-  --sidebar-border:        rgba(26,74,122,0.6);
-  --sidebar-text:          #8bb8e0;
-  --sidebar-text-active:   #e8f4ff;
-  --sidebar-active-bg:     rgba(0,132,255,0.15);
-  --sidebar-active-border: #0084ff;
-  --sidebar-section:       #4a7fa8;
-  --sidebar-hover-bg:      rgba(255,255,255,0.04);
-  --sidebar-footer-bg:     rgba(0,0,0,0.3);
+  --sidebar-bg:            #071410;
+  --sidebar-border:        rgba(0,135,81,0.4);
+  --sidebar-text:          rgba(180,220,200,0.70);
+  --sidebar-text-active:   #e8f8f0;
+  --sidebar-active-bg:     rgba(0,161,222,0.18);
+  --sidebar-active-border: #00A1DE;
+  --sidebar-section:       rgba(180,220,200,0.35);
+  --sidebar-hover-bg:      rgba(255,255,255,0.05);
+  --sidebar-footer-bg:     rgba(0,0,0,0.30);
 
-  --border-primary: #1a4a7a;
-  --border-secondary: #1e5a9a;
-  --border-light: rgba(26, 74, 122, 0.3);
+  --border-primary:  #1e4430;
+  --border-secondary:#2d6347;
+  --border-light:    rgba(0,135,81,0.25);
 
-  --accent-primary:   #60a5fa;
-  --accent-secondary: #3b82f6;
-  --accent3:          #34d399;
+  --accent-primary:   #00c97a;
+  --accent-secondary: #00a862;
+  --accent3:          #38bdf8;
 
-  --success: #34d399;
+  --success: #00c97a;
   --warning: #fbbf24;
   --danger:  #f87171;
-  --info:    #60a5fa;
+  --info:    #38bdf8;
 
-  --text-primary:   #e8f4ff;
-  --text-secondary: #8bb8e0;
-  --text-tertiary:  #4a7fa8;
-  --text-muted:     #2a5a8a;
+  --text-primary:   #e8f8f0;
+  --text-secondary: #a8d4bb;
+  --text-tertiary:  #5a9e7a;
+  --text-muted:     #2d6347;
 
-  --shadow-sm: 0 2px 8px rgba(0,0,0,0.25);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.3);
-  --shadow-lg: 0 8px 32px rgba(0,0,0,0.4);
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.35);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.45);
 }
 
 /* Dark mode role pills */
 [data-theme="dark"] .role-admin,
 [data-theme="dark"] .rp-admin        { background: rgba(251,191,36,0.15);  color: #fbbf24; border-color: rgba(251,191,36,0.3); }
 [data-theme="dark"] .role-doctor,
-[data-theme="dark"] .rp-doctor       { background: rgba(96,165,250,0.12);  color: #60a5fa; border-color: rgba(96,165,250,0.25); }
+[data-theme="dark"] .rp-doctor       { background: rgba(0,201,122,0.12);   color: #00c97a; border-color: rgba(0,201,122,0.25); }
 [data-theme="dark"] .role-receptionist,
-[data-theme="dark"] .rp-receptionist { background: rgba(52,211,153,0.12);  color: #34d399; border-color: rgba(52,211,153,0.25); }
+[data-theme="dark"] .rp-receptionist { background: rgba(56,189,248,0.12);  color: #38bdf8; border-color: rgba(56,189,248,0.25); }
 [data-theme="dark"] .role-lab,
 [data-theme="dark"] .rp-lab          { background: rgba(167,139,250,0.15); color: #a78bfa; border-color: rgba(167,139,250,0.3); }
 [data-theme="dark"] .role-data-manager,
@@ -2316,17 +2316,17 @@ select.form-control option {
   border-color: rgba(0, 132, 255, 0.2);
 }
 
-/* Dark mode auth pages — restore dark background */
+/* Dark mode auth pages */
 [data-theme="dark"] .auth-wrap {
-  background: radial-gradient(ellipse at 20% 50%, rgba(5, 30, 58, 0.95) 0%, var(--bg-primary) 65%);
+  background: radial-gradient(ellipse at 20% 50%, rgba(0,40,25,0.98) 0%, var(--bg-primary) 65%);
 }
 [data-theme="dark"] .auth-wrap::before {
   background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23003366' fill-opacity='0.12'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2v-4h4v-2h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/svg%3E");
 }
 /* Dark mode signin role tags */
 [data-theme="dark"] .rt-admin        { background: rgba(251,191,36,0.15);  color: #fbbf24; border-color: rgba(251,191,36,0.3); }
-[data-theme="dark"] .rt-doctor       { background: rgba(96,165,250,0.12);  color: #60a5fa; border-color: rgba(96,165,250,0.25); }
-[data-theme="dark"] .rt-receptionist { background: rgba(52,211,153,0.12);  color: #34d399; border-color: rgba(52,211,153,0.25); }
+[data-theme="dark"] .rt-doctor       { background: rgba(0,201,122,0.12);   color: #00c97a; border-color: rgba(0,201,122,0.25); }
+[data-theme="dark"] .rt-receptionist { background: rgba(56,189,248,0.12);  color: #38bdf8; border-color: rgba(56,189,248,0.25); }
 [data-theme="dark"] .rt-lab          { background: rgba(167,139,250,0.15); color: #a78bfa; border-color: rgba(167,139,250,0.3); }
 /* Dark mode AI prediction card */
 [data-theme="dark"] .card[style*="26,111,190"] {
@@ -2640,7 +2640,7 @@ select.form-control option {
 
 .phone-picker__item:hover,
 .phone-picker__item:focus {
-  background: rgba(37,99,235,0.08);
+  background: rgba(0,135,81,0.08);
   outline: none;
 }
 
@@ -3074,7 +3074,7 @@ select.form-control option {
 }
 
 .iti input[type="tel"]:focus {
-  border-color: #1d4ed8;
+  border-color: #006B40;
   box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.15);
 }
 
@@ -3163,7 +3163,7 @@ select.form-control option {
 }
 
 .iti__search-input:focus {
-  border-color: #1d4ed8;
+  border-color: #006B40;
   box-shadow: 0 0 0 2px rgba(0,132,255,0.15);
 }
 
@@ -3176,6 +3176,8 @@ html[data-theme="light"] .iti__search-input {
   border-color: var(--border-primary);
   color: var(--text-primary);
 }
+
+
 
 
 
