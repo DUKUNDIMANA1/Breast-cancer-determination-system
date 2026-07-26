@@ -153,9 +153,9 @@
             </span>
             &nbsp;{{ pred.cnn_confidence|round(1) }}%
             {% if pred.cnn_result != pred.result %}
-              <span class="badge" style="background:var(--warn-bg,#7c5c00);color:#ffd600;margin-left:4px;">⚠ Disagrees</span>
+              <span class="badge" style="background:rgba(217,119,6,0.15);color:var(--warning);margin-left:4px;">⚠ Disagrees</span>
             {% else %}
-              <span class="badge" style="background:var(--success-bg,#003322);color:#00e676;margin-left:4px;">✓ Agrees</span>
+              <span class="badge" style="background:rgba(0,135,81,0.12);color:var(--success);margin-left:4px;">✓ Agrees</span>
             {% endif %}
           </div>
         </div>
