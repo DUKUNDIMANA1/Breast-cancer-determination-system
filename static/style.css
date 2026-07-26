@@ -44,10 +44,10 @@
   --info:    #00A1DE;
 
   /* Text */
-  --text-primary:   #0d1f17;
-  --text-secondary: #1e4033;
-  --text-tertiary:  #4a7a62;
-  --text-muted:     #7aaa90;
+  --text-primary:   #1a1a1a;  /* near-black — same as MoH body text */
+  --text-secondary: #333333;  /* dark grey — MoH paragraph text */
+  --text-tertiary:  #666666;  /* medium grey — labels, captions */
+  --text-muted:     #999999;  /* light grey — placeholders, hints */
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0,87,51,0.08), 0 1px 2px rgba(0,87,51,0.05);
@@ -2264,10 +2264,10 @@ select.form-control option {
   --danger:  #f87171;
   --info:    #38bdf8;
 
-  --text-primary:   #e8f8f0;
-  --text-secondary: #a8d4bb;
-  --text-tertiary:  #5a9e7a;
-  --text-muted:     #2d6347;
+  --text-primary:   #f0f0f0;
+  --text-secondary: #b0b0b0;
+  --text-tertiary:  #787878;
+  --text-muted:     #4a4a4a;
 
   --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
   --shadow-md: 0 4px 16px rgba(0,0,0,0.35);
@@ -3176,6 +3176,8 @@ html[data-theme="light"] .iti__search-input {
   border-color: var(--border-primary);
   color: var(--text-primary);
 }
+
+
 
 
 
