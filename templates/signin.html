@@ -1,5 +1,5 @@
 ﻿{% extends "base.html" %}
-{% block title %}Sign In â€” BreastCare AI{% endblock %}
+{% block title %}Sign In BreastCare AI{% endblock %}
 
 {% block auth_content %}
 <style>
@@ -193,8 +193,18 @@
       </div>
       <div class="form-group">
         <label for="inp-password">Password</label>
-        <input class="form-control" type="password" name="password" id="inp-password"
-          placeholder="Enter your password" required/>
+        <div style="position:relative;">
+          <input class="form-control" type="password" name="password" id="inp-password"
+            placeholder="Enter your password" required style="padding-right:44px;"/>
+          <button type="button" id="toggle-password"
+            onclick="togglePassword('inp-password','toggle-password-icon')"
+            aria-label="Show/hide password"
+            style="position:absolute;top:50%;right:12px;transform:translateY(-50%);
+                   background:none;border:none;cursor:pointer;padding:0;
+                   color:var(--text-tertiary);font-size:16px;line-height:1;">
+            <i class="fa-regular fa-eye" id="toggle-password-icon"></i>
+          </button>
+        </div>
         <div style="text-align:right;margin-top:6px;">
           <a href="{{ url_for('forgot_password') }}"
              style="font-size:var(--font-size-sm);color:var(--accent-primary);text-decoration:none;">
@@ -218,10 +228,21 @@
 
 {% block scripts %}
 <script>
+function togglePassword(inputId, iconId) {
+  const input = document.getElementById(inputId);
+  const icon  = document.getElementById(iconId);
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.classList.replace('fa-eye', 'fa-eye-slash');
+  } else {
+    input.type = 'password';
+    icon.classList.replace('fa-eye-slash', 'fa-eye');
+  }
+}
+
 function fillLogin(username, password) {
   document.getElementById('inp-username').value = username;
   document.getElementById('inp-password').value = password;
-  // Highlight the form to show it was filled
   document.getElementById('inp-username').style.borderColor = 'var(--accent-primary)';
   document.getElementById('inp-password').style.borderColor = 'var(--accent-primary)';
   setTimeout(() => {
