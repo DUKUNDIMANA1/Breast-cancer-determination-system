@@ -7,6 +7,7 @@ Database: MongoDB Atlas Cloud
 
 from flask import (Flask, render_template, request, redirect,
                    url_for, session, flash, send_file, jsonify)
+from flask_caching import Cache
 from pymongo import MongoClient, DESCENDING
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -28,6 +29,19 @@ app = Flask(__name__,
             static_folder=os.path.join(BASE_DIR, 'static'))
 
 app.secret_key = os.environ.get('SECRET_KEY', 'breastcare-ai-secret-2024')
+
+# ── In-process cache (SimpleCache) ───────────────────────────────────────────
+# No Redis/Memcached required — works out of the box.
+# Timeouts:
+#   user_profile  : 120 s  (changes rarely within a session)
+#   unread_count  : 15 s   (near-realtime is fine)
+#   dashboard     : 30 s   (stats can be slightly stale)
+#   patient/user  : 60 s   (lookup tables change infrequently)
+cache = Cache(app, config={
+    'CACHE_TYPE':           'SimpleCache',
+    'CACHE_DEFAULT_TIMEOUT': 60,
+    'CACHE_THRESHOLD':       500,   # max items in memory
+})
 
 # On Render, use /tmp for uploads (ephemeral but writable)
 # Locally, use static/uploads so images are served directly
@@ -279,6 +293,8 @@ def notify(user_id, message, link=None):
         'is_read':  False,
         'created_at': now_str()
     })
+    # Bust unread badge cache so the next page load shows the new count
+    cache.delete(f'unread_{user_id}')
 
 def notify_role(role, message, link=None):
     users = col('users').find({'role': role}, {'_id': 1})
@@ -288,11 +304,19 @@ def notify_role(role, message, link=None):
 def unread_count():
     if 'user_id' not in session: return 0
     if not MONGO_OK:             return 0
-    if session.get('role') == 'receptionist': return 0  # receptionists don't receive notifications
+    if session.get('role') == 'receptionist': return 0
+    uid = session['user_id']
+    cache_key = f'unread_{uid}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     try:
-        return col('notifications').count_documents(
-            {'user_id': session['user_id'], 'is_read': False})
-    except: return 0
+        count = col('notifications').count_documents(
+            {'user_id': uid, 'is_read': False})
+        cache.set(cache_key, count, timeout=15)   # refresh every 15 s
+        return count
+    except:
+        return 0
 
 app.jinja_env.globals['unread_count'] = unread_count
 app.jinja_env.globals['MONGO_OK']     = lambda: MONGO_OK
@@ -369,11 +393,24 @@ def role_required(*roles):
         return d
     return dec
 
+def _invalidate_user_cache(uid):
+    """Clear per-user cached data after profile or password changes."""
+    cache.delete(f'cu_{uid}')
+    cache.delete(f'unread_{uid}')
+
 def cu():
     if 'user_id' not in session: return None
     if not MONGO_OK: return {'full_name': session.get('full_name','?'), 'role': session.get('role','?')}
-    u = col('users').find_one({'_id': oid(session['user_id'])})
-    return doc(u)
+    uid = session['user_id']
+    cache_key = f'cu_{uid}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    u = col('users').find_one({'_id': oid(uid)})
+    result = doc(u)
+    if result:
+        cache.set(cache_key, result, timeout=120)   # user profile changes rarely
+    return result
 
 # ── Auth Routes ───────────────────────────────────────────────────────────────
 @app.route('/')
@@ -588,6 +625,7 @@ def reset_password(token):
             {'_id': oid(reset['user_id'])},
             {'$set': {'password': hash_pw(new_password), 'updated_at': now_str()}}
         )
+        _invalidate_user_cache(reset['user_id'])
         
         # Delete used token
         col('password_resets').delete_one({'_id': reset['_id']})
@@ -661,6 +699,7 @@ def change_password():
             {'_id': oid(session['user_id'])},
             {'$set': {'password': hash_pw(new_pw), 'must_change_password': False, 'updated_at': now_str()}}
         )
+        _invalidate_user_cache(session['user_id'])
         session.pop('must_change_password', None)
         flash('Password changed successfully. Welcome!', 'success')
         return redirect(url_for('dashboard'))
@@ -681,92 +720,128 @@ def notifications():
     return render_template('notifications.html', user=cu(), notifications=notes)
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
+# ── Cached DB lookup helpers ──────────────────────────────────────────────────
+def _cached_patient(patient_id):
+    """Return patient doc from cache or DB (60 s TTL)."""
+    if not patient_id: return None
+    key = f'pt_{patient_id}'
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    p = col('patients').find_one({'patient_id': patient_id})
+    result = doc(p) if p else None
+    cache.set(key, result, timeout=60)
+    return result
+
+def _cached_user(user_id):
+    """Return user doc from cache or DB (120 s TTL)."""
+    if not user_id: return None
+    key = f'cu_{user_id}'
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    u = col('users').find_one({'_id': oid(user_id)})
+    result = doc(u) if u else None
+    if result:
+        cache.set(key, result, timeout=120)
+    return result
+
+def _invalidate_dashboard(uid):
+    """Bust the cached dashboard for a specific user."""
+    cache.delete(f'dash_{uid}')
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    role = session['role']; uid = session['user_id']; data = {}
-    if role == 'admin':
-        data['total_patients']     = col('patients').count_documents({})
-        data['total_predictions']  = col('predictions').count_documents({})
-        data['malignant']          = col('predictions').count_documents({'result':1})
-        data['benign']             = col('predictions').count_documents({'result':0})
-        data['pending_requests']   = col('lab_requests').count_documents({'status':'pending'})
-        data['total_users']        = col('users').count_documents({})
-        # Recent predictions with patient names
-        pipeline = [
-            {'$sort': {'created_at': -1}}, {'$limit': 6},
-            {'$addFields': {'patient_id_str': '$patient_id'}},
-            {'$lookup': {'from':'patients','localField':'patient_id','foreignField':'patient_id','as':'pt'}},
-            {'$lookup': {'from':'users','localField':'determined_by','foreignField':'_id','as':'dr'}},
-            {'$unwind': {'path':'$pt','preserveNullAndEmptyArrays':True}},
-            {'$unwind': {'path':'$dr','preserveNullAndEmptyArrays':True}},
-        ]
-        raw = list(col('predictions').aggregate(pipeline))
-        data['recent_predictions'] = []
-        for r in raw:
-            d = doc(r)
-            d['full_name']   = r.get('pt',{}).get('full_name','—') if 'pt' in r else '—'
-            d['doctor_name'] = r.get('dr',{}).get('full_name','—') if 'dr' in r else '—'
-            data['recent_predictions'].append(d)
+    role = session['role']; uid = session['user_id']
 
-    elif role == 'receptionist':
-        data['total_patients'] = col('patients').count_documents({'registered_by': uid})
-        data['today_patients'] = col('patients').count_documents({
-            'registered_by': uid,
-            'created_at': {'$regex': f'^{datetime.now().strftime("%Y-%m-%d")}'}})
-        data['total_all']      = col('patients').count_documents({})
-        data['recent_patients']= docs(col('patients').find().sort('created_at',-1).limit(6))
+    # Cache dashboard data per user — 30 s is fresh enough for stats
+    dash_key = f'dash_{uid}'
+    data = cache.get(dash_key)
+    if data is None:
+        data = {}
+        if role == 'admin':
+            data['total_patients']     = col('patients').count_documents({})
+            data['total_predictions']  = col('predictions').count_documents({})
+            data['malignant']          = col('predictions').count_documents({'result':1})
+            data['benign']             = col('predictions').count_documents({'result':0})
+            data['pending_requests']   = col('lab_requests').count_documents({'status':'pending'})
+            data['total_users']        = col('users').count_documents({})
+            pipeline = [
+                {'$sort': {'created_at': -1}}, {'$limit': 6},
+                {'$addFields': {'patient_id_str': '$patient_id'}},
+                {'$lookup': {'from':'patients','localField':'patient_id','foreignField':'patient_id','as':'pt'}},
+                {'$lookup': {'from':'users','localField':'determined_by','foreignField':'_id','as':'dr'}},
+                {'$unwind': {'path':'$pt','preserveNullAndEmptyArrays':True}},
+                {'$unwind': {'path':'$dr','preserveNullAndEmptyArrays':True}},
+            ]
+            raw = list(col('predictions').aggregate(pipeline))
+            data['recent_predictions'] = []
+            for r in raw:
+                d = doc(r)
+                d['full_name']   = r.get('pt',{}).get('full_name','—') if 'pt' in r else '—'
+                d['doctor_name'] = r.get('dr',{}).get('full_name','—') if 'dr' in r else '—'
+                data['recent_predictions'].append(d)
 
-    elif role == 'lab':
-        data['pending_count'] = col('lab_requests').count_documents({'status':'pending'})
-        data['done_today']    = col('lab_results').count_documents({
-            'submitted_by': uid,
-            'submitted_at': {'$regex': f'^{datetime.now().strftime("%Y-%m-%d")}'}})
-        data['total_done']    = col('lab_results').count_documents({'submitted_by': uid})
-        pending_raw = list(col('lab_requests').find({'status':'pending'})
-                           .sort([('priority',-1),('created_at',1)]).limit(8))
-        pending = []
-        for r in pending_raw:
-            d = doc(r)
-            pt = col('patients').find_one({'patient_id': r['patient_id']})
-            dr = col('users').find_one({'_id': oid(r.get('requested_by',''))})
-            d['patient_name'] = pt['full_name'] if pt else '—'
-            d['doctor_name']  = dr['full_name'] if dr else '—'
-            pending.append(d)
-        data['pending_list'] = pending
+        elif role == 'receptionist':
+            data['total_patients'] = col('patients').count_documents({'registered_by': uid})
+            data['today_patients'] = col('patients').count_documents({
+                'registered_by': uid,
+                'created_at': {'$regex': f'^{datetime.now().strftime("%Y-%m-%d")}'}})
+            data['total_all']      = col('patients').count_documents({})
+            data['recent_patients']= docs(col('patients').find().sort('created_at',-1).limit(6))
 
-    elif role == 'doctor':
-        data['my_requests']   = col('lab_requests').count_documents({'requested_by': uid})
-        data['awaiting']      = col('lab_requests').count_documents({'requested_by': uid,'status':'results_ready'})
-        data['my_predictions']= col('predictions').count_documents({'determined_by': uid})
-        data['malignant']     = col('predictions').count_documents({'determined_by': uid,'result':1})
-        data['benign']        = col('predictions').count_documents({'determined_by': uid,'result':0})
-        ready_raw = list(col('lab_requests').find(
-            {'requested_by': uid, 'status':'results_ready'}).sort('updated_at',-1).limit(8))
-        ready = []
-        for r in ready_raw:
-            d = doc(r)
-            pt = col('patients').find_one({'patient_id': r['patient_id']})
-            d['patient_name'] = pt['full_name'] if pt else '—'
-            ready.append(d)
-        data['ready_list'] = ready
+        elif role == 'lab':
+            data['pending_count'] = col('lab_requests').count_documents({'status':'pending'})
+            data['done_today']    = col('lab_results').count_documents({
+                'submitted_by': uid,
+                'submitted_at': {'$regex': f'^{datetime.now().strftime("%Y-%m-%d")}'}})
+            data['total_done']    = col('lab_results').count_documents({'submitted_by': uid})
+            pending_raw = list(col('lab_requests').find({'status':'pending'})
+                               .sort([('priority',-1),('created_at',1)]).limit(8))
+            pending = []
+            for r in pending_raw:
+                d = doc(r)
+                pt = _cached_patient(r['patient_id'])
+                dr = _cached_user(r.get('requested_by',''))
+                d['patient_name'] = pt['full_name'] if pt else '—'
+                d['doctor_name']  = dr['full_name'] if dr else '—'
+                pending.append(d)
+            data['pending_list'] = pending
 
-    elif role == 'data_manager':
-        data['total_patients']    = col('patients').count_documents({})
-        data['total_predictions'] = col('predictions').count_documents({})
-        data['malignant']         = col('predictions').count_documents({'result': 1})
-        data['benign']            = col('predictions').count_documents({'result': 0})
-        # Recent predictions for download
-        raw = list(col('predictions').find().sort('created_at', -1).limit(10))
-        recent = []
-        for r in raw:
-            d = doc(r)
-            pt = col('patients').find_one({'patient_id': r['patient_id']})
-            dr = col('users').find_one({'_id': oid(r.get('determined_by',''))})
-            d['full_name']   = pt['full_name'] if pt else '—'
-            d['doctor_name'] = dr['full_name'] if dr else '—'
-            recent.append(d)
-        data['recent_predictions'] = recent
+        elif role == 'doctor':
+            data['my_requests']   = col('lab_requests').count_documents({'requested_by': uid})
+            data['awaiting']      = col('lab_requests').count_documents({'requested_by': uid,'status':'results_ready'})
+            data['my_predictions']= col('predictions').count_documents({'determined_by': uid})
+            data['malignant']     = col('predictions').count_documents({'determined_by': uid,'result':1})
+            data['benign']        = col('predictions').count_documents({'determined_by': uid,'result':0})
+            ready_raw = list(col('lab_requests').find(
+                {'requested_by': uid, 'status':'results_ready'}).sort('updated_at',-1).limit(8))
+            ready = []
+            for r in ready_raw:
+                d = doc(r)
+                pt = _cached_patient(r['patient_id'])
+                d['patient_name'] = pt['full_name'] if pt else '—'
+                ready.append(d)
+            data['ready_list'] = ready
+
+        elif role == 'data_manager':
+            data['total_patients']    = col('patients').count_documents({})
+            data['total_predictions'] = col('predictions').count_documents({})
+            data['malignant']         = col('predictions').count_documents({'result': 1})
+            data['benign']            = col('predictions').count_documents({'result': 0})
+            raw = list(col('predictions').find().sort('created_at', -1).limit(10))
+            recent = []
+            for r in raw:
+                d = doc(r)
+                pt = _cached_patient(r['patient_id'])
+                dr = _cached_user(r.get('determined_by',''))
+                d['full_name']   = pt['full_name'] if pt else '—'
+                d['doctor_name'] = dr['full_name'] if dr else '—'
+                recent.append(d)
+            data['recent_predictions'] = recent
+
+        cache.set(dash_key, data, timeout=30)   # stale after 30 s
 
     return render_template('dashboard.html', user=cu(), **data)
 
@@ -778,9 +853,9 @@ def patients():
     query = {'$or':[{'full_name':{'$regex':q,'$options':'i'}},
                     {'patient_id':{'$regex':q,'$options':'i'}}]} if q else {}
     rows = docs(col('patients').find(query).sort('created_at',-1))
-    # Attach registrar name
+    # Attach registrar name using cached user lookup
     for r in rows:
-        u = col('users').find_one({'_id': oid(r.get('registered_by',''))})
+        u = _cached_user(r.get('registered_by',''))
         r['reg_by_name'] = u['full_name'] if u else '—'
     return render_template('patients.html', user=cu(), patients=rows, q=q)
 
@@ -958,8 +1033,8 @@ def lab_requests_list():
     rows = []
     for r in rows_raw:
         d = doc(r)
-        pt = col('patients').find_one({'patient_id': r['patient_id']})
-        dr = col('users').find_one({'_id': oid(r.get('requested_by',''))})
+        pt = _cached_patient(r['patient_id'])
+        dr = _cached_user(r.get('requested_by',''))
         d['patient_name'] = pt['full_name'] if pt else '—'
         d['doctor_name']  = dr['full_name'] if dr else '—'
         if q and q.lower() not in d['patient_name'].lower() and q.lower() not in r['patient_id'].lower():
@@ -990,6 +1065,8 @@ def new_request():
             'created_at':     now_str(),
             'updated_at':     now_str()
         })
+        # Bust requesting doctor's and current user's dashboard cache
+        _invalidate_dashboard(session['user_id'])
         pt = col('patients').find_one({'patient_id': p})
         notify_role('lab',
             f"🔬 Lab request for {pt['full_name'] if pt else p} [{p}]: {rt}",
@@ -1007,8 +1084,8 @@ def lab_dashboard():
     pending = []
     for r in pending_raw:
         d = doc(r)
-        pt = col('patients').find_one({'patient_id': r['patient_id']})
-        dr = col('users').find_one({'_id': oid(r.get('requested_by',''))})
+        pt = _cached_patient(r['patient_id'])
+        dr = _cached_user(r.get('requested_by',''))
         d['patient_name'] = pt['full_name'] if pt else '—'
         d['doctor_name']  = dr['full_name'] if dr else '—'
         pending.append(d)
@@ -1018,7 +1095,7 @@ def lab_dashboard():
     completed = []
     for r in completed_raw:
         d = doc(r)
-        pt = col('patients').find_one({'patient_id': r['patient_id']})
+        pt = _cached_patient(r['patient_id'])
         d['patient_name'] = pt['full_name'] if pt else '—'
         res = col('lab_results').find_one({'request_id': d['id']})
         d['submitted_at'] = res['submitted_at'] if res else d['updated_at']
@@ -1034,7 +1111,7 @@ def upload_results(request_id):
     if not req:
         flash('Request not found.','danger'); return redirect(url_for('lab_dashboard'))
     req = doc(req)
-    pt = col('patients').find_one({'patient_id': req['patient_id']})
+    pt = _cached_patient(req['patient_id'])
     req['patient_name'] = pt['full_name'] if pt else '—'
 
     if request.method == 'POST':
@@ -1101,6 +1178,9 @@ def upload_results(request_id):
         col('lab_requests').update_one(
             {'_id': oid(request_id)},
             {'$set': {'status':'results_ready','updated_at': now_str()}})
+        # Bust lab tech's and the requesting doctor's dashboard cache
+        _invalidate_dashboard(session['user_id'])
+        _invalidate_dashboard(req['requested_by'])
 
         notify(req['requested_by'],
                f"✅ Lab results ready for {req['patient_name']} [{req['patient_id']}]",
@@ -1338,6 +1418,8 @@ def review_results(request_id):
         col('lab_requests').update_one(
             {'_id': oid(request_id)},
             {'$set': {'status':'completed','updated_at': now_str()}})
+        # Bust doctor's dashboard cache after completing a diagnosis
+        _invalidate_dashboard(session['user_id'])
 
         notify_role('admin',
             f"🏥 {req['patient_name']} [{req['patient_id']}] → {lbl}{stage_str} ({confidence:.1f}%)",
@@ -1373,8 +1455,8 @@ def _enrich_predictions(raw, q=''):
     rows = []
     for r in raw:
         d  = doc(r)
-        pt = col('patients').find_one({'patient_id': r['patient_id']})
-        dr = col('users').find_one({'_id': oid(r.get('determined_by',''))})
+        pt = _cached_patient(r['patient_id'])
+        dr = _cached_user(r.get('determined_by',''))
         d['full_name']            = pt['full_name']              if pt else '—'
         d['contact']              = pt.get('contact','')         if pt else '—'
         d['gender']               = pt.get('gender','')          if pt else '—'
@@ -1392,8 +1474,8 @@ def prediction_detail(pred_id):
     if not pr:
         flash('Not found.','danger'); return redirect(url_for('dashboard'))
     pr  = doc(pr)
-    pt  = col('patients').find_one({'patient_id': pr['patient_id']})
-    dr  = col('users').find_one({'_id': oid(pr.get('determined_by',''))})
+    pt  = _cached_patient(pr['patient_id'])
+    dr  = _cached_user(pr.get('determined_by',''))
     pr.update({
         'full_name':             pt['full_name']              if pt else '—',
         'contact':               pt.get('contact','')         if pt else '—',
@@ -1581,6 +1663,7 @@ def edit_user(uid):
             {'_id': oid(uid)},
             {'$set': update_data}
         )
+        _invalidate_user_cache(uid)
         
         flash('User updated successfully.','success')
         return redirect(url_for('admin_users'))

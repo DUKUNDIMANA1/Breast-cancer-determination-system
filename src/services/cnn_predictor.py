@@ -17,12 +17,11 @@ No H&E stain check — the CNN handles tissue vs non-tissue classification.
 """
 
 import os
+import hashlib
 import numpy as np
 
 BASE_DIR        = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MODEL_PATH      = os.path.join(BASE_DIR, 'artifacts', 'cnn_model.h5')
-# NOTE: cnn_best.keras intentionally not used — Keras 3 cannot deserialise
-# MobileNetV2 checkpoints saved with legacy BatchNorm renorm config keys.
 IMG_SIZE        = 50
 
 # Minimum CNN confidence to accept as tissue (class 0 or 1)
@@ -30,6 +29,24 @@ TISSUE_MIN_CONF = 0.45
 
 _cnn_model   = None
 _model_n_out = 3
+
+# ── In-memory result caches (keyed by SHA-256 of image bytes) ─────────────────
+# Holds at most 256 entries; oldest entry is evicted when full.
+_MAX_CACHE   = 256
+_predict_cache  = {}   # hash → cnn_predict_image result dict
+_validate_cache = {}   # hash → cnn_validate_image result dict
+
+def _img_hash(image_bytes: bytes) -> str:
+    return hashlib.sha256(image_bytes).hexdigest()
+
+def _cache_get(store: dict, key: str):
+    return store.get(key)
+
+def _cache_set(store: dict, key: str, value):
+    if len(store) >= _MAX_CACHE:
+        # Evict the oldest key (insertion-order guaranteed in Python 3.7+)
+        store.pop(next(iter(store)))
+    store[key] = value
 
 
 def load_cnn():
@@ -190,25 +207,34 @@ def cnn_validate_image(image_bytes):
       reason      : str
       cnn_used    : bool
     """
+    h = _img_hash(image_bytes)
+    cached = _cache_get(_validate_cache, h)
+    if cached is not None:
+        return cached
+
     # Step 1: fast colour sanity (no model needed)
     col_ok, col_reason = _colour_sanity(image_bytes)
     if not col_ok:
-        return {
+        result = {
             'is_valid':   False,
             'confidence': 0.0,
             'reason':     f"Image rejected: {col_reason}. Upload an H&E stained tissue slide.",
             'cnn_used':   False,
         }
+        _cache_set(_validate_cache, h, result)
+        return result
 
     # Step 2: CNN classification
     model = load_cnn()
     if model is None:
-        return {
+        result = {
             'is_valid':   True,
             'confidence': 50.0,
             'reason':     "Accepted (CNN unavailable — colour check passed).",
             'cnn_used':   False,
         }
+        _cache_set(_validate_cache, h, result)
+        return result
 
     try:
         arr   = _decode_image(image_bytes)
@@ -222,15 +248,17 @@ def cnn_validate_image(image_bytes):
             tissue_conf = max(p_ben, p_mal)
 
             if pred == 2:
-                return {
+                result = {
                     'is_valid':   False,
                     'confidence': round(p_unrel * 100, 1),
                     'reason':     (f"Image rejected: CNN says Unrelated ({p_unrel:.0%}). "
                                    f"Only tissue slides are accepted."),
                     'cnn_used':   True,
                 }
+                _cache_set(_validate_cache, h, result)
+                return result
             if tissue_conf < TISSUE_MIN_CONF:
-                return {
+                result = {
                     'is_valid':   False,
                     'confidence': round(tissue_conf * 100, 1),
                     'reason':     (f"Image rejected: CNN not confident it is tissue "
@@ -238,39 +266,49 @@ def cnn_validate_image(image_bytes):
                                    f"Unrelated={p_unrel:.0%})."),
                     'cnn_used':   True,
                 }
+                _cache_set(_validate_cache, h, result)
+                return result
             label = "Benign" if pred == 0 else "Malignant"
-            return {
+            result = {
                 'is_valid':   True,
                 'confidence': round(tissue_conf * 100, 1),
                 'reason':     (f"Valid tissue slide — CNN: {label} "
                                f"(Benign={p_ben:.0%}, Malignant={p_mal:.0%})."),
                 'cnn_used':   True,
             }
+            _cache_set(_validate_cache, h, result)
+            return result
         else:
             # Binary sigmoid
             p_mal = float(probs[0]) if probs.shape == (1,) else float(probs)
             p_ben = 1.0 - p_mal
             if 0.35 <= p_mal <= 0.65:
-                return {
+                result = {
                     'is_valid':   False,
                     'confidence': round(max(p_ben, p_mal) * 100, 1),
                     'reason':     f"Image rejected: CNN uncertain (p={p_mal:.3f}).",
                     'cnn_used':   True,
                 }
+                _cache_set(_validate_cache, h, result)
+                return result
             label = "Malignant" if p_mal >= 0.5 else "Benign"
             conf  = round(max(p_ben, p_mal) * 100, 1)
-            return {'is_valid': True, 'confidence': conf,
-                    'reason': f"Valid tissue — CNN: {label} ({conf:.0f}%).",
-                    'cnn_used': True}
+            result = {'is_valid': True, 'confidence': conf,
+                      'reason': f"Valid tissue — CNN: {label} ({conf:.0f}%).",
+                      'cnn_used': True}
+            _cache_set(_validate_cache, h, result)
+            return result
 
     except Exception as e:
         print(f"[CNN] validate error: {e}")
-        return {
+        result = {
             'is_valid':   True,
             'confidence': 50.0,
             'reason':     f"CNN error ({e}); colour check passed.",
             'cnn_used':   False,
         }
+        _cache_set(_validate_cache, h, result)
+        return result
 
 
 def cnn_predict_image(image_bytes):
@@ -289,6 +327,11 @@ def cnn_predict_image(image_bytes):
       unrelated   : bool
       uncertain   : bool  — True if prediction is low-confidence (< 60%)
     """
+    h = _img_hash(image_bytes)
+    cached = _cache_get(_predict_cache, h)
+    if cached is not None:
+        return cached
+
     model = load_cnn()
     if model is None:
         return {'available': False, 'result': None, 'confidence': 0,
@@ -304,32 +347,36 @@ def cnn_predict_image(image_bytes):
             p_unrel = float(probs[2])
             pred   = int(np.argmax(probs))
             if pred == 2:
-                return {'available': True, 'result': None, 'unrelated': True,
+                result = {'available': True, 'result': None, 'unrelated': True,
                         'confidence': round(p_unrel * 100, 2),
                         'p_benign': round(p_ben * 100, 2),
                         'p_malignant': round(p_mal * 100, 2), 'uncertain': False}
-            result = pred
-            conf   = round(float(probs[result]) * 100, 2)
-            # Flag as uncertain if confidence is below 60%
+                _cache_set(_predict_cache, h, result)
+                return result
+            res = pred
+            conf   = round(float(probs[res]) * 100, 2)
             uncertain = conf < 60.0
-            return {'available': True, 'result': result, 'unrelated': False,
+            result = {'available': True, 'result': res, 'unrelated': False,
                     'confidence': conf,
                     'p_benign': round(p_ben * 100, 2),
                     'p_malignant': round(p_mal * 100, 2),
                     'uncertain': uncertain}
+            _cache_set(_predict_cache, h, result)
+            return result
         else:
             # ELEVATED THRESHOLD: Require 55% confidence for malignant (instead of 50%)
-            # This reduces false positives where benign images are classified as malignant
             p_mal = float(probs[0]) if probs.shape == (1,) else float(probs)
             p_ben = 1.0 - p_mal
-            result = 1 if p_mal >= 0.55 else 0  # Changed from 0.5 to 0.55
-            conf   = round((p_mal if result == 1 else p_ben) * 100, 2)
+            res = 1 if p_mal >= 0.55 else 0
+            conf   = round((p_mal if res == 1 else p_ben) * 100, 2)
             uncertain = conf < 60.0
-            return {'available': True, 'result': result, 'unrelated': False,
+            result = {'available': True, 'result': res, 'unrelated': False,
                     'confidence': conf,
                     'p_benign': round(p_ben * 100, 2),
                     'p_malignant': round(p_mal * 100, 2),
                     'uncertain': uncertain}
+            _cache_set(_predict_cache, h, result)
+            return result
 
     except Exception as e:
         print(f"[CNN] predict error: {e}")

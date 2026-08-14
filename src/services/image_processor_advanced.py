@@ -6,6 +6,7 @@ Features extracted from fine needle aspirate (FNA) images of breast masses
 
 import cv2
 import numpy as np
+import hashlib
 from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
@@ -20,6 +21,18 @@ except ImportError:
 from scipy.spatial import ConvexHull
 import warnings
 warnings.filterwarnings('ignore')
+
+# ── Feature-extraction result cache (keyed by SHA-256 of image bytes) ─────────
+_FEAT_CACHE_MAX = 128
+_feat_cache: dict = {}
+
+def _feat_cache_get(h: str):
+    return _feat_cache.get(h)
+
+def _feat_cache_set(h: str, value):
+    if len(_feat_cache) >= _FEAT_CACHE_MAX:
+        _feat_cache.pop(next(iter(_feat_cache)))
+    _feat_cache[h] = value
 
 # Feature names matching Wisconsin Breast Cancer Dataset (all 30 features)
 FEATURE_NAMES = [
@@ -42,7 +55,14 @@ def extract_features(image_bytes):
     """
     Extract features from medical image using robust methodology.
     Tries multiple methods and returns the best non-default result.
+    Results are cached by image hash to avoid re-processing the same image.
     """
+    h = hashlib.sha256(image_bytes).hexdigest()
+    cached = _feat_cache_get(h)
+    if cached is not None:
+        print("[Advanced Processor] Feature extraction served from cache.")
+        return cached
+
     try:
         print("[Advanced Processor] Starting feature extraction...")
         nparr = np.frombuffer(image_bytes, np.uint8)
@@ -65,6 +85,7 @@ def extract_features(image_bytes):
             f1 = extract_with_nuclei_detection(gray)
             if is_real(f1):
                 print("[Advanced Processor] Nuclei detection produced real features")
+                _feat_cache_set(h, f1)
                 return f1
         except Exception as e:
             print(f"[Advanced Processor] Nuclei detection failed: {e}")
@@ -74,6 +95,7 @@ def extract_features(image_bytes):
             f2 = extract_with_general_analysis(gray, img)
             if is_real(f2):
                 print("[Advanced Processor] General analysis produced real features")
+                _feat_cache_set(h, f2)
                 return f2
         except Exception as e:
             print(f"[Advanced Processor] General analysis failed: {e}")
@@ -83,17 +105,22 @@ def extract_features(image_bytes):
             f3 = extract_with_texture_analysis(gray)
             if is_real(f3):
                 print("[Advanced Processor] Texture analysis produced real features")
+                _feat_cache_set(h, f3)
                 return f3
         except Exception as e:
             print(f"[Advanced Processor] Texture analysis failed: {e}")
 
         # All methods returned defaults — generate image-derived features
         print("[Advanced Processor] Falling back to image-derived features")
-        return generate_enhanced_features(gray)
+        result = generate_enhanced_features(gray)
+        _feat_cache_set(h, result)
+        return result
 
     except Exception as e:
         print(f"[Advanced Processor] Critical error: {e}")
-        return generate_enhanced_features(None)
+        result = generate_enhanced_features(None)
+        _feat_cache_set(h, result)
+        return result
 
 def extract_with_nuclei_detection(image):
     """Extract features using nuclei detection (for medical images)."""
