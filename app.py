@@ -97,8 +97,8 @@ def connect_mongodb():
                 # Atlas / SRV — no directConnection, no socketKeepAlive (removed in newer PyMongo)
                 current_client = MongoClient(
                     uri,
-                    serverSelectionTimeoutMS=30000,
-                    connectTimeoutMS=30000,
+                    serverSelectionTimeoutMS=12000,
+                    connectTimeoutMS=12000,
                     socketTimeoutMS=30000,
                     retryWrites=True,
                     retryReads=True,
@@ -161,10 +161,10 @@ def connect_mongodb():
 
 # Start MongoDB connection in background — don't block app startup
 import threading
+import time
 
 def _connect_background():
     """Connect to MongoDB in background thread — retries until success."""
-    import time
     for attempt in range(5):
         if connect_mongodb():
             print(f"[BreastCare AI] [OK] MongoDB connected (attempt {attempt+1})")
@@ -173,9 +173,55 @@ def _connect_background():
         time.sleep(5)
     print("[BreastCare AI] [ERROR] All MongoDB connection attempts failed.")
 
-_bg_thread = threading.Thread(target=_connect_background, daemon=True)
-_bg_thread.start()
-print("[BreastCare AI] MongoDB connecting in background...")
+# ── Startup connection strategy ───────────────────────────────────────────────
+# On Render (and any cold-start environment) the very first HTTP request can
+# arrive before a background thread finishes connecting, causing a 500 that
+# disappears on refresh.  Fix: attempt a synchronous connect first (up to 15 s).
+# If it succeeds we're done.  If it fails (e.g. local dev with no Mongo), fall
+# back to the background retry thread so the app still starts rather than
+# hanging indefinitely.
+_SYNC_TIMEOUT = 15   # seconds to wait during the blocking startup attempt
+
+def _try_sync_connect():
+    """Synchronous connect attempt with a wall-clock timeout."""
+    import signal, platform
+
+    # signal.alarm is POSIX-only; on Windows fall back to a thread approach
+    if platform.system() != 'Windows':
+        def _handler(signum, frame):
+            raise TimeoutError("MongoDB sync connect timed out")
+        old = signal.signal(signal.SIGALRM, _handler)
+        signal.alarm(_SYNC_TIMEOUT)
+        try:
+            result = connect_mongodb()
+        except TimeoutError:
+            result = False
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+        return result
+    else:
+        # Windows: run connect in a thread and join with timeout
+        outcome = [False]
+        def _run():
+            outcome[0] = connect_mongodb()
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        t.join(timeout=_SYNC_TIMEOUT)
+        return outcome[0]
+
+print("[BreastCare AI] Attempting synchronous MongoDB connect (blocking, max 15 s)...")
+_sync_ok = _try_sync_connect()
+
+if _sync_ok:
+    print("[BreastCare AI] [OK] MongoDB ready before first request.")
+    _bg_thread = threading.Thread(target=lambda: None, daemon=True)  # no-op thread
+    _bg_thread.start()
+else:
+    # Sync connect failed — start background retry thread as fallback
+    print("[BreastCare AI] [WARN] Sync connect failed — starting background retry thread.")
+    _bg_thread = threading.Thread(target=_connect_background, daemon=True)
+    _bg_thread.start()
 
 # MongoDB collections
 def col(name):
