@@ -1,7 +1,7 @@
 """
 BreastCare AI — MongoDB Atlas Edition
 Roles: Receptionist → Doctor → Lab Technician → Doctor → Admin
-Primary Model: CNN (MobileNetV2, IDC histopathology) — only model used for diagnosis
+Primary Model: AutoML-selected CNN (IDC histopathology) — only model used for diagnosis
 Database: MongoDB Atlas Cloud
 """
 
@@ -258,17 +258,17 @@ FEATURE_DEFAULTS = {
     'concave points_worst':0.1146,'symmetry_worst':0.2901,'fractal_dimension_worst':0.0839
 }
 
-# ── Pre-load CNN at startup (background thread, non-blocking) ─────────────────
+# ── Pre-load AutoML-CNN at startup (background thread, non-blocking) ──────────
 def _preload_cnn():
     try:
-        from src.services.cnn_predictor import load_cnn
+        from src.services.cnn_predictor import load_cnn, get_model_display_name
         m = load_cnn()
         if m is not None:
-            print("[BreastCare AI] CNN model pre-loaded successfully.")
+            print(f"[BreastCare AI] AutoML-CNN model pre-loaded: {get_model_display_name()}")
         else:
-            print("[BreastCare AI] CNN model not found — validation will use heuristic fallback.")
+            print("[BreastCare AI] AutoML-CNN model not found — validation will use heuristic fallback.")
     except Exception as e:
-        print(f"[BreastCare AI] CNN pre-load skipped: {e}")
+        print(f"[BreastCare AI] AutoML-CNN pre-load skipped: {e}")
 
 import threading
 threading.Thread(target=_preload_cnn, daemon=True).start()
@@ -1387,8 +1387,8 @@ def review_results(request_id):
         from src.services.cnn_predictor import cnn_predict_image, cnn_available
 
         if not cnn_available():
-            flash('❌ CNN model is not available. Please ensure artifacts/cnn_model.h5 exists. '
-                  'Run ml/train_from_zip.py to train the model.', 'danger')
+            flash('❌ AutoML-CNN model is not available. Please ensure artifacts/cnn_model.h5 exists. '
+                  'Run ml/train_direct.py to train the model.', 'danger')
             return render_template('review_results.html', user=cu(),
                                    req=req, lab_result=lab,
                                    features=FEATURES, feat_values=feat_values,
@@ -1424,7 +1424,8 @@ def review_results(request_id):
         result     = cp['result']
         confidence = cp['confidence']
         uncertain  = cp.get('uncertain', False)
-        model_used = 'IDC-CNN (MobileNetV2)'
+        from src.services.cnn_predictor import get_model_display_name
+        model_used = get_model_display_name()
 
         # Warn if prediction is low-confidence
         if uncertain:
