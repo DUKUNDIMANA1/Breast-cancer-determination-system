@@ -34,7 +34,7 @@
     
     <!-- Diagnosis Description Table -->
     <div class="card mb-16">
-      <div class="sec-label"><i class="fa-solid fa-clipboard-list"></i> Diagnosis Description</div>
+      <div class="sec-label"><i class="fa-solid fa-clipboard-list"></i> Diagnosis Summary</div>
       <div class="table-wrap">
         <table class="diagnosis-table">
           <tbody>
@@ -48,82 +48,47 @@
             </tr>
             <tr>
               <td class="diagnosis-label">Clinical Stage</td>
-              <td class="diagnosis-value">
-                {% if pred.result==1 %}
-                  {% if pred.stage %}
-                    {% if pred.stage == 'I' %}Stage I - Early stage, localized tumor{% endif %}
-                    {% if pred.stage == 'II' %}Stage II - Larger tumor, limited spread{% endif %}
-                    {% if pred.stage == 'III' %}Stage III - Advanced local disease{% endif %}
-                    {% if pred.stage == 'IV' %}Stage IV - Metastatic disease{% endif %}
-                  {% else %}
-                    <span class="text-warn">Stage not determined</span>
-                  {% endif %}
+              <td class="diagnosis-value fw-700">
+                {% if pred.result==1 and pred.stage %}
+                  <span style="color:{% if pred.stage=='Stage I' %}var(--warning){% elif pred.stage=='Stage II' %}#e67e22{% else %}var(--danger){% endif %}">{{ pred.stage }}</span>
+                {% elif pred.result==0 %}
+                  <span class="text-success">Benign — No cancer stage applicable</span>
                 {% else %}
-                  <span class="text-success">Benign - No cancer detected</span>
+                  <span class="text-dim">Not determined</span>
                 {% endif %}
+              </td>
+            </tr>
+            {% if pred.result==1 and pred.staging_data %}
+            {% set sd = pred.staging_data %}
+            <tr>
+              <td class="diagnosis-label">Nottingham Grade</td>
+              <td class="diagnosis-value">
+                {{ sd.grade_label }} &nbsp;
+                <span class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:11px;">Score {{ sd.nottingham_score }}/9</span>
               </td>
             </tr>
             <tr>
               <td class="diagnosis-label">Risk Level</td>
               <td class="diagnosis-value">
-                {% if pred.result==1 %}
-                  {% if pred.stage == 'I' %}<span class="text-warn">Moderate Risk</span>{% endif %}
-                  {% if pred.stage == 'II' %}<span class="text-danger">High Risk</span>{% endif %}
-                  {% if pred.stage == 'III' %}<span class="text-danger">Very High Risk</span>{% endif %}
-                  {% if pred.stage == 'IV' %}<span class="text-danger">Critical Risk</span>{% endif %}
-                  {% if not pred.stage %}<span class="text-warn">Risk Level Unknown</span>{% endif %}
-                {% else %}
-                  <span class="text-success">Low Risk</span>
-                {% endif %}
+                {% if sd.stage_num == 1 %}<span class="text-warn">Moderate Risk</span>
+                {% elif sd.stage_num == 2 %}<span style="color:#e67e22">High Risk</span>
+                {% elif sd.stage_num == 3 %}<span class="text-danger">Very High Risk</span>
+                {% else %}<span class="text-danger fw-700">Critical Risk</span>{% endif %}
               </td>
             </tr>
-            <tr>
-              <td class="diagnosis-label">Recommended Action</td>
-              <td class="diagnosis-value">
-                {% if pred.result==1 %}
-                  {% if pred.stage == 'I' %}
-                    <div>• Surgical consultation recommended</div>
-                    <div>• Consider radiation therapy</div>
-                    <div>• Regular monitoring schedule</div>
-                  {% endif %}
-                  {% if pred.stage == 'II' %}
-                    <div>• Immediate surgical intervention</div>
-                    <div>• Chemotherapy likely required</div>
-                    <div>• Radiation therapy planning</div>
-                  {% endif %}
-                  {% if pred.stage == 'III' %}
-                    <div>• Aggressive treatment required</div>
-                    <div>• Multi-modality therapy</div>
-                    <div>• Specialized oncology care</div>
-                  {% endif %}
-                  {% if pred.stage == 'IV' %}
-                    <div>• Palliative care focus</div>
-                    <div>• Systemic therapy</div>
-                    <div>• Quality of life management</div>
-                  {% endif %}
-                  {% if not pred.stage %}
-                    <div>• Further staging required</div>
-                    <div>• Complete diagnostic workup</div>
-                    <div>• Specialist consultation</div>
-                  {% endif %}
-                {% else %}
-                  <div>• Routine follow-up care</div>
-                  <div>• Annual screening recommended</div>
-                  <div>• Monitor for changes</div>
-                {% endif %}
-              </td>
-            </tr>
+            {% endif %}
             <tr>
               <td class="diagnosis-label">Prognosis</td>
               <td class="diagnosis-value">
-                {% if pred.result==1 %}
-                  {% if pred.stage == 'I' %}<span class="text-success">Excellent with treatment</span>{% endif %}
-                  {% if pred.stage == 'II' %}<span class="text-warn">Good with proper treatment</span>{% endif %}
-                  {% if pred.stage == 'III' %}<span class="text-warn">Fair with aggressive treatment</span>{% endif %}
-                  {% if pred.stage == 'IV' %}<span class="text-danger">Variable, focus on quality</span>{% endif %}
-                  {% if not pred.stage %}<span class="text-dim">Depends on final staging</span>{% endif %}
+                {% if pred.result==1 and pred.staging_data %}
+                  {{ pred.staging_data.prognosis }}
+                {% elif pred.result==1 %}
+                  {% if pred.stage == 'Stage I' %}<span class="text-success">5-year survival rate &gt;95% with early treatment.</span>{% endif %}
+                  {% if pred.stage == 'Stage II' %}<span class="text-warn">5-year survival rate 70–85% with appropriate treatment.</span>{% endif %}
+                  {% if pred.stage == 'Stage III' %}<span class="text-warn">5-year survival rate 40–60% with aggressive treatment.</span>{% endif %}
+                  {% if pred.stage == 'Stage IV' %}<span class="text-danger">5-year survival rate &lt;25%.</span>{% endif %}
                 {% else %}
-                  <span class="text-success">Excellent</span>
+                  <span class="text-success">Excellent — routine monitoring recommended.</span>
                 {% endif %}
               </td>
             </tr>
@@ -131,6 +96,117 @@
         </table>
       </div>
     </div>
+
+    <!-- Histopathology Staging Breakdown (malignant only) -->
+    {% if pred.result==1 and pred.staging_data %}
+    {% set sd = pred.staging_data %}
+    <div class="card mb-16" style="border-left:4px solid {% if sd.stage_num <= 1 %}var(--warning){% elif sd.stage_num == 2 %}#e67e22{% else %}var(--danger){% endif %}">
+      <div class="sec-label"><i class="fa-solid fa-microscope"></i> Histopathology Staging Breakdown
+        {% if sd.fallback_used %}<span class="badge" style="background:rgba(217,119,6,0.15);color:var(--warning);font-size:10px;margin-left:6px;">CNN probability fallback</span>{% else %}<span class="badge" style="background:rgba(0,135,81,0.12);color:var(--success);font-size:10px;margin-left:6px;">Image-derived</span>{% endif %}
+      </div>
+
+      <!-- Nottingham scoring table -->
+      <div class="table-wrap mb-12">
+        <table class="diagnosis-table" style="font-size:13px;">
+          <thead>
+            <tr style="background:var(--bg-tertiary)">
+              <th style="padding:8px 12px;text-align:left;font-weight:600;color:var(--text-primary)">Criterion</th>
+              <th style="padding:8px 12px;text-align:center;font-weight:600;color:var(--text-primary)">Score (1–3)</th>
+              <th style="padding:8px 12px;text-align:left;font-weight:600;color:var(--text-primary)">Interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set gs = sd.scores.gland_formation %}
+            <tr>
+              <td class="diagnosis-label">Gland / Tubule Formation</td>
+              <td style="text-align:center;padding:8px 12px;">
+                <span style="font-weight:700;font-size:16px;color:{% if gs==1 %}var(--success){% elif gs==2 %}var(--warning){% else %}var(--danger){% endif %}">{{ gs }}</span>
+              </td>
+              <td class="diagnosis-value fs-12">
+                {% if gs==1 %}Well-formed glands present — favourable (≥75% tubule formation)
+                {% elif gs==2 %}Moderate gland formation (10–75%)
+                {% else %}Poor/absent glandular structures (&lt;10%){% endif %}
+              </td>
+            </tr>
+            {% set ps = sd.scores.nuclear_pleomorphism %}
+            <tr>
+              <td class="diagnosis-label">Nuclear Pleomorphism</td>
+              <td style="text-align:center;padding:8px 12px;">
+                <span style="font-weight:700;font-size:16px;color:{% if ps==1 %}var(--success){% elif ps==2 %}var(--warning){% else %}var(--danger){% endif %}">{{ ps }}</span>
+              </td>
+              <td class="diagnosis-value fs-12">
+                {% if ps==1 %}Uniform, small regular nuclei (CV={{ '%.3f'|format(sd.nuclear_cv) }}, circ={{ '%.2f'|format(sd.mean_circularity) }})
+                {% elif ps==2 %}Moderate nuclear size variation
+                {% else %}Marked atypia, pleomorphic nuclei (CV={{ '%.3f'|format(sd.nuclear_cv) }}){% endif %}
+              </td>
+            </tr>
+            {% set ms = sd.scores.mitotic_activity %}
+            <tr>
+              <td class="diagnosis-label">Mitotic Activity Proxy</td>
+              <td style="text-align:center;padding:8px 12px;">
+                <span style="font-weight:700;font-size:16px;color:{% if ms==1 %}var(--success){% elif ms==2 %}var(--warning){% else %}var(--danger){% endif %}">{{ ms }}</span>
+              </td>
+              <td class="diagnosis-value fs-12">
+                {% if ms==1 %}Low mitotic activity (density={{ '%.3f'|format(sd.mitotic_density) }}/1000px²)
+                {% elif ms==2 %}Moderate mitotic foci density
+                {% else %}High mitotic activity (density={{ '%.3f'|format(sd.mitotic_density) }}/1000px²){% endif %}
+              </td>
+            </tr>
+            <tr style="background:var(--bg-tertiary);font-weight:700;">
+              <td style="padding:8px 12px;">Total Nottingham Score</td>
+              <td style="text-align:center;padding:8px 12px;font-size:18px;color:{% if sd.nottingham_score<=5 %}var(--success){% elif sd.nottingham_score<=7 %}var(--warning){% else %}var(--danger){% endif %}">
+                {{ sd.nottingham_score }}
+              </td>
+              <td style="padding:8px 12px;font-size:13px;">{{ sd.grade_label }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Invasion & density indicators -->
+      <div class="info-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:12px;">
+        <div style="background:var(--bg-tertiary);border-radius:8px;padding:10px 14px;">
+          <div class="fs-11 text-dim fw-600 mb-2">CELLULARITY DENSITY</div>
+          <div class="fw-700 fs-15">{{ '%.2f'|format(sd.cellularity_density) }} <span class="fs-11 text-dim">/1000px²</span></div>
+        </div>
+        <div style="background:var(--bg-tertiary);border-radius:8px;padding:10px 14px;">
+          <div class="fs-11 text-dim fw-600 mb-2">GLAND LUMEN AREA</div>
+          <div class="fw-700 fs-15">{{ '%.1f'|format(sd.lumen_ratio) }}<span class="fs-11 text-dim">%</span></div>
+        </div>
+        <div style="background:var(--bg-tertiary);border-radius:8px;padding:10px 14px;">
+          <div class="fs-11 text-dim fw-600 mb-2">LOCAL INVASION LEVEL</div>
+          <div class="fw-700 fs-15" style="color:{% if sd.invasion_level<=1 %}var(--success){% elif sd.invasion_level==2 %}var(--warning){% elif sd.invasion_level==3 %}#e67e22{% else %}var(--danger){% endif %}">
+            Level {{ sd.invasion_level }} / 4
+          </div>
+        </div>
+        <div style="background:var(--bg-tertiary);border-radius:8px;padding:10px 14px;">
+          <div class="fs-11 text-dim fw-600 mb-2">NUCLEAR SHAPE CV</div>
+          <div class="fw-700 fs-15">{{ '%.3f'|format(sd.nuclear_cv) }}</div>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div style="background:rgba(220,38,38,0.06);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+        <strong style="color:var(--text-primary)">Clinical Assessment:</strong> {{ sd.description }}
+      </div>
+
+      <!-- Recommendations -->
+      <div>
+        <div class="fs-12 fw-600 text-dim mb-6">TREATMENT RECOMMENDATIONS</div>
+        <ul style="margin:0;padding-left:18px;font-size:13px;color:var(--text-secondary);line-height:1.8;">
+          {% for rec in sd.recommendations %}
+          <li>{{ rec }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% elif pred.result==1 and pred.stage %}
+    <!-- Legacy staging (no staging_data) -->
+    <div class="card mb-16">
+      <div class="sec-label"><i class="fa-solid fa-triangle-exclamation"></i> Stage Information</div>
+      <div class="fs-13 text-secondary">{{ pred.stage }}</div>
+    </div>
+    {% endif %}
     <div class="card">
       <div class="sec-label"><i class="fa-solid fa-user"></i> Patient Information</div>
       <div class="info-grid">

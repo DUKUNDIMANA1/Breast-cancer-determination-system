@@ -131,25 +131,130 @@ def _pred_story(pred, patient):
     ]))
     story.append(ft)
 
-    # Add Stage Information section
+    # Add Stage Information section — full Nottingham breakdown if available
     if is_mal and pred.get('stage'):
-        story.append(Spacer(1,5))
-        story.append(Paragraph('Cancer Stage Information:',
-            ParagraphStyle('nb',fontSize=9,fontName='Helvetica-Bold')))
+        story.append(Spacer(1, 6))
+        sd = pred.get('staging_data') or {}
+        stage_str = pred.get('stage', '')
 
-        stage_info = pred.get('stage', '')
-        stage_descriptions = {
-            'Stage I': 'Small, localised tumour — excellent prognosis with early treatment.',
-            'Stage II': 'Moderate size or limited spread — good prognosis with treatment.',
-            'Stage III': 'Larger tumour or regional spread — requires aggressive treatment.',
-            'Stage IV': 'Advanced spread — immediate specialist referral required.'
-        }
+        # ── Stage header ─────────────────────────────────────────────────────
+        stage_hdr = Table(
+            [[f'CANCER STAGE: {stage_str}',
+              sd.get('grade_label', '') or 'Stage derived from histopathology']],
+            colWidths=[90*mm, 100*mm])
+        stage_hdr.setStyle(TableStyle([
+            ('BACKGROUND', (0,0),(0,0), colors.HexColor('#dc2626')),
+            ('BACKGROUND', (1,0),(1,0), colors.HexColor('#7f1d1d')),
+            ('TEXTCOLOR', (0,0),(-1,-1), colors.white),
+            ('FONTNAME', (0,0),(-1,-1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0),(0,0), 11), ('FONTSIZE',(1,0),(1,0), 9),
+            ('ALIGN', (0,0),(-1,-1), 'CENTER'), ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+            ('ROWHEIGHT',(0,0),(-1,-1), 22), ('PADDING',(0,0),(-1,-1), 6),
+        ]))
+        story.append(stage_hdr)
+        story.append(Spacer(1, 4))
 
-        stage_desc = stage_descriptions.get(stage_info, 'Consult specialist for detailed staging information.')
-        story.append(Paragraph(stage_info,
-            ParagraphStyle('nt',fontSize=9,fontName='Helvetica-Bold', textColor=colors.HexColor('#dc2626'))))
-        story.append(Paragraph(stage_desc,
-            ParagraphStyle('nt',fontSize=9,fontName='Helvetica')))
+        # ── Nottingham scoring table (if imaging data available) ─────────────
+        scores = sd.get('scores')
+        if scores:
+            not_score = sd.get('nottingham_score', '-')
+            fallback  = sd.get('fallback_used', True)
+            method_note = ('Probability-based fallback' if fallback
+                           else 'Image-derived (Nottingham proxy)')
+
+            story.append(Paragraph('Nottingham Grading — Histopathology Analysis',
+                ParagraphStyle('h3', fontSize=8, fontName='Helvetica-Bold',
+                               textColor=colors.HexColor('#1e293b'), spaceAfter=3)))
+
+            score_data = [
+                ['Criterion', 'Score', 'Interpretation'],
+                ['Gland / Tubule Formation',
+                 str(scores.get('gland_formation', '-')),
+                 {1: 'Well-formed (>75% tubule formation)',
+                  2: 'Moderate (10–75%)',
+                  3: 'Poor / absent (<10%)'}.get(scores.get('gland_formation'), '—')],
+                ['Nuclear Pleomorphism',
+                 str(scores.get('nuclear_pleomorphism', '-')),
+                 {1: f'Uniform nuclei  CV={sd.get("nuclear_cv",0):.3f}',
+                  2: 'Moderate variation',
+                  3: f'Marked atypia  CV={sd.get("nuclear_cv",0):.3f}'}.get(
+                     scores.get('nuclear_pleomorphism'), '—')],
+                ['Mitotic Activity Proxy',
+                 str(scores.get('mitotic_activity', '-')),
+                 {1: f'Low  density={sd.get("mitotic_density",0):.3f}/1000px²',
+                  2: 'Moderate',
+                  3: f'High  density={sd.get("mitotic_density",0):.3f}/1000px²'}.get(
+                     scores.get('mitotic_activity'), '—')],
+                [f'Total Score ({method_note})', str(not_score),
+                 sd.get('grade_label', '—')],
+            ]
+
+            nt = Table(score_data, colWidths=[55*mm, 18*mm, 117*mm])
+            nt.setStyle(TableStyle([
+                ('BACKGROUND', (0,0),(-1,0), colors.HexColor('#1e293b')),
+                ('TEXTCOLOR', (0,0),(-1,0), colors.white),
+                ('FONTNAME', (0,0),(-1,0), 'Helvetica-Bold'),
+                ('FONTNAME', (0,1),(-1,-1), 'Helvetica'),
+                ('FONTNAME', (0,-1),(-1,-1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0,0),(-1,-1), 8),
+                ('ALIGN', (1,0),(1,-1), 'CENTER'),
+                ('GRID', (0,0),(-1,-1), 0.3, colors.HexColor('#cbd5e1')),
+                ('ROWBACKGROUNDS',(0,1),(-1,-2),
+                 [colors.HexColor('#f8fafc'), colors.white]),
+                ('BACKGROUND', (0,-1),(-1,-1), colors.HexColor('#fef2f2')),
+                ('PADDING', (0,0),(-1,-1), 4),
+            ]))
+            story.append(nt)
+            story.append(Spacer(1, 4))
+
+            # Invasion & density indicators
+            inv_data = [
+                ['Indicator', 'Value'],
+                ['Cellularity Density', f'{sd.get("cellularity_density",0):.2f} /1000px²'],
+                ['Gland Lumen Area', f'{sd.get("lumen_ratio",0):.1f}%'],
+                ['Local Invasion Level', f'Level {sd.get("invasion_level","?")} / 4'],
+                ['Nuclear Shape CV', f'{sd.get("nuclear_cv",0):.3f}'],
+            ]
+            inv_t = Table(inv_data, colWidths=[80*mm, 110*mm])
+            inv_t.setStyle(TableStyle([
+                ('BACKGROUND', (0,0),(-1,0), colors.HexColor('#374151')),
+                ('TEXTCOLOR', (0,0),(-1,0), colors.white),
+                ('FONTNAME', (0,0),(-1,0), 'Helvetica-Bold'),
+                ('FONTNAME', (0,1),(-1,-1), 'Helvetica'),
+                ('FONTNAME', (0,1),(0,-1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0,0),(-1,-1), 8),
+                ('GRID', (0,0),(-1,-1), 0.3, colors.HexColor('#cbd5e1')),
+                ('ROWBACKGROUNDS',(0,1),(-1,-1),
+                 [colors.HexColor('#f9fafb'), colors.HexColor('#f1f5f9')]),
+                ('PADDING', (0,0),(-1,-1), 4),
+            ]))
+            story.append(inv_t)
+            story.append(Spacer(1, 4))
+
+        # Description + prognosis
+        if sd.get('description'):
+            story.append(Paragraph('Clinical Assessment:',
+                ParagraphStyle('nb', fontSize=8, fontName='Helvetica-Bold')))
+            story.append(Paragraph(sd['description'],
+                ParagraphStyle('nt', fontSize=8, fontName='Helvetica')))
+            story.append(Spacer(1, 3))
+
+        if sd.get('prognosis'):
+            story.append(Paragraph('Prognosis:',
+                ParagraphStyle('nb', fontSize=8, fontName='Helvetica-Bold')))
+            story.append(Paragraph(sd['prognosis'],
+                ParagraphStyle('nt', fontSize=8, fontName='Helvetica')))
+            story.append(Spacer(1, 3))
+
+        # Recommendations list
+        recs = sd.get('recommendations') or []
+        if recs:
+            story.append(Paragraph('Treatment Recommendations:',
+                ParagraphStyle('nb', fontSize=8, fontName='Helvetica-Bold')))
+            for rec in recs:
+                story.append(Paragraph(f'• {rec}',
+                    ParagraphStyle('nt', fontSize=8, fontName='Helvetica',
+                                   leftIndent=10)))
 
     if pred.get('doctor_notes'):
         story.append(Spacer(1,5))

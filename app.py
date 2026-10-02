@@ -1433,14 +1433,22 @@ def review_results(request_id):
                   f'Malignant={cp.get("p_malignant", 0):.1f}%). '
                   f'Please review the image and features carefully before finalizing.', 'warning')
 
-        # Stage estimation from CNN malignant probability
-        stage = None
+        # ── Histopathology-based staging (replaces simple probability threshold) ──
+        stage        = None
+        staging_data = {}
         if result == 1:
-            p = cp.get('p_malignant', 50) / 100.0
-            if p < 0.65:   stage = 'Stage I'
-            elif p < 0.80: stage = 'Stage II'
-            elif p < 0.92: stage = 'Stage III'
-            else:           stage = 'Stage IV'
+            from src.services.staging_engine import determine_stage
+            try:
+                staging_data = determine_stage(img_bytes, cp)
+                stage        = staging_data.get('stage')
+            except Exception as _se:
+                print(f'[Staging] Error: {_se}')
+                # Graceful fallback to probability-based staging
+                p = cp.get('p_malignant', 50) / 100.0
+                if p < 0.65:   stage = 'Stage I'
+                elif p < 0.80: stage = 'Stage II'
+                elif p < 0.92: stage = 'Stage III'
+                else:           stage = 'Stage IV'
 
         col('predictions').insert_one({
             'patient_id':        req['patient_id'],
@@ -1450,6 +1458,7 @@ def review_results(request_id):
             'result':            result,
             'confidence':        confidence,
             'stage':             stage,
+            'staging_data':      staging_data,   # full histopathology staging breakdown
             'cnn_result':        result,
             'cnn_confidence':    confidence,
             'cnn_used':          True,
