@@ -1,7 +1,11 @@
 """
 CNN Predictor — BreastCare AI
 ==============================
-Uses the 3-class MobileNetV2 model trained on IDC histopathology patches.
+Uses the AutoML-selected CNN model trained on IDC histopathology patches.
+The model architecture is chosen automatically by ml/train_direct.py from
+multiple candidate configurations; the best one (highest validation accuracy)
+is saved to artifacts/cnn_model.h5 alongside a metrics file that records
+the selected architecture.
 
 Classes:
   0 = Benign  (IDC-negative tissue)
@@ -11,17 +15,20 @@ Classes:
 Validation:
   Step 1 — Colour sanity (fast, rejects obvious non-tissue: pure green,
             cyan water, blue sky, pure red, blank, black)
-  Step 2 — CNN 3-class check (must predict class 0 or 1 with >= 45% confidence)
+  Step 2 — AutoML CNN 3-class check (must predict class 0 or 1 with >= 45%
+            confidence)
 
 No H&E stain check — the CNN handles tissue vs non-tissue classification.
 """
 
 import os
+import json
 import hashlib
 import numpy as np
 
 BASE_DIR        = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MODEL_PATH      = os.path.join(BASE_DIR, 'artifacts', 'cnn_model.h5')
+METRICS_PATH    = os.path.join(BASE_DIR, 'artifacts', 'cnn_metrics.json')
 IMG_SIZE        = 50
 
 # Minimum CNN confidence to accept as tissue (class 0 or 1)
@@ -29,6 +36,31 @@ TISSUE_MIN_CONF = 0.45
 
 _cnn_model   = None
 _model_n_out = 3
+
+
+def get_model_display_name():
+    """
+    Return a human-readable model name that reflects the AutoML architecture
+    stored in cnn_metrics.json. Falls back gracefully if the file is missing.
+    """
+    try:
+        if os.path.exists(METRICS_PATH):
+            with open(METRICS_PATH, 'r', encoding='utf-8') as f:
+                metrics = json.load(f)
+            arch = metrics.get('architecture') or metrics.get('automl', {})
+            model_type = metrics.get('model_type', '')
+            if arch and isinstance(arch, dict):
+                filters = arch.get('base_filters', '?')
+                blocks  = arch.get('conv_blocks', '?')
+                lr      = arch.get('learning_rate', '?')
+                return (f"AutoML-CNN "
+                        f"(filters={filters}, blocks={blocks}, lr={lr})")
+            if 'AutoML' in model_type:
+                return 'AutoML-selected CNN (IDC dataset)'
+    except Exception:
+        pass
+    return 'AutoML-CNN (IDC histopathology)'
+
 
 # ── In-memory result caches (keyed by SHA-256 of image bytes) ─────────────────
 # Holds at most 256 entries; oldest entry is evicted when full.
@@ -50,7 +82,7 @@ def _cache_set(store: dict, key: str, value):
 
 
 def load_cnn():
-    """Load model lazily. Returns None if TF unavailable."""
+    """Load AutoML-selected model lazily. Returns None if TF unavailable."""
     global _cnn_model, _model_n_out
     if _cnn_model is not None:
         return _cnn_model
@@ -58,34 +90,35 @@ def load_cnn():
     try:
         import tensorflow as tf
     except ImportError:
-        print("[CNN] TensorFlow not installed — heuristic fallback active.")
+        print("[AutoML-CNN] TensorFlow not installed — heuristic fallback active.")
         return None
     except Exception as e:
-        print(f"[CNN] TensorFlow import error: {e}")
+        print(f"[AutoML-CNN] TensorFlow import error: {e}")
         return None
 
     for path in [MODEL_PATH]:
         if not os.path.exists(path):
             continue
         if os.path.getsize(path) < 1000:
-            print(f"[CNN] Skipping {os.path.basename(path)} — empty/corrupt.")
+            print(f"[AutoML-CNN] Skipping {os.path.basename(path)} — empty/corrupt.")
             continue
         try:
             _cnn_model = tf.keras.models.load_model(path)
             out_shape  = _cnn_model.output_shape
             _model_n_out = out_shape[-1] if len(out_shape) > 1 else 1
             kind = f"{_model_n_out}-class softmax" if _model_n_out > 1 else "binary sigmoid"
-            print(f"[CNN] Model loaded from {os.path.basename(path)} ({kind}).")
+            display = get_model_display_name()
+            print(f"[AutoML-CNN] Model loaded: {display} ({kind}).")
             return _cnn_model
         except Exception as e:
-            print(f"[CNN] Could not load {os.path.basename(path)}: {e}")
+            print(f"[AutoML-CNN] Could not load {os.path.basename(path)}: {e}")
 
-    print("[CNN] No valid model — heuristic fallback active.")
+    print("[AutoML-CNN] No valid model — heuristic fallback active.")
     return None
 
 
-def _decode_image(image_bytes):
-    """Decode bytes → normalised (1, IMG_SIZE, IMG_SIZE, 3) array."""
+def _decode_image(image_bytes, model=None):
+    """Decode bytes and resize to the loaded model's input dimensions."""
     try:
         import cv2
     except ImportError:
@@ -94,7 +127,22 @@ def _decode_image(image_bytes):
     img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("Could not decode image — unsupported format or corrupted file.")
-    img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
+    input_shape = getattr(model, 'input_shape', None)
+    if isinstance(input_shape, list):
+        input_shape = input_shape[0]
+    if input_shape and len(input_shape) == 4:
+        height = input_shape[1] or IMG_SIZE
+        width = input_shape[2] or IMG_SIZE
+        channels = input_shape[3] or 3
+    else:
+        height = width = IMG_SIZE
+        channels = 3
+    if channels == 1:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        img = np.expand_dims(img, axis=-1)
+    img = cv2.resize(img, (int(width), int(height)))
+    if img.ndim == 2:
+        img = np.expand_dims(img, axis=-1)
     img = img.astype('float32') / 255.0
     return np.expand_dims(img, axis=0)
 
@@ -192,9 +240,9 @@ def _colour_sanity(image_bytes):
 
 
 def _heuristic_validate(image_bytes):
-    """Fallback when CNN unavailable."""
+    """Fallback when AutoML-CNN unavailable."""
     ok, reason = _colour_sanity(image_bytes)
-    return ok, 50.0 if ok else 0.0, reason if not ok else "Accepted (CNN unavailable — basic check passed)."
+    return ok, 50.0 if ok else 0.0, reason if not ok else "Accepted (AutoML-CNN unavailable — basic check passed)."
 
 
 def cnn_validate_image(image_bytes):
@@ -230,14 +278,14 @@ def cnn_validate_image(image_bytes):
         result = {
             'is_valid':   True,
             'confidence': 50.0,
-            'reason':     "Accepted (CNN unavailable — colour check passed).",
+            'reason':     "Accepted (AutoML-CNN unavailable — colour check passed).",
             'cnn_used':   False,
         }
         _cache_set(_validate_cache, h, result)
         return result
 
     try:
-        arr   = _decode_image(image_bytes)
+        arr   = _decode_image(image_bytes, model)
         probs = model.predict(arr, verbose=0)[0]
 
         if _model_n_out == 3:
@@ -300,11 +348,11 @@ def cnn_validate_image(image_bytes):
             return result
 
     except Exception as e:
-        print(f"[CNN] validate error: {e}")
+        print(f"[AutoML-CNN] validate error: {e}")
         result = {
             'is_valid':   True,
             'confidence': 50.0,
-            'reason':     f"CNN error ({e}); colour check passed.",
+            'reason':     f"AutoML-CNN error ({e}); colour check passed.",
             'cnn_used':   False,
         }
         _cache_set(_validate_cache, h, result)
@@ -338,7 +386,7 @@ def cnn_predict_image(image_bytes):
                 'p_benign': 0, 'p_malignant': 0, 'unrelated': False, 'uncertain': False}
 
     try:
-        arr   = _decode_image(image_bytes)
+        arr   = _decode_image(image_bytes, model)
         probs = model.predict(arr, verbose=0)[0]
 
         if _model_n_out == 3:
@@ -379,7 +427,7 @@ def cnn_predict_image(image_bytes):
             return result
 
     except Exception as e:
-        print(f"[CNN] predict error: {e}")
+        print(f"[AutoML-CNN] predict error: {e}")
         return {'available': False, 'result': None, 'confidence': 0,
                 'p_benign': 0, 'p_malignant': 0, 'unrelated': False, 'uncertain': False, 'error': str(e)}
 
